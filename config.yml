@@ -12,5 +12,4 @@ port: 8004
 resolution: 720
 
 # miner settings
-miner_wallet: ""
-miner_intensity: 50
+
