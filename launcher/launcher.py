@@ -1,3 +1,6 @@
+# -------- THE SOURCE CODE OF THE EXECUTABLE -------- #
+#                (compiled with nuitka)
+
 import requests
 import sys
 import os
