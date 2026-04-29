@@ -26,6 +26,9 @@ If possible, try to run the c2 through https to ensure security.
 I created a ready-to-go exe-based launcher for your c2 servers. all you need to do is download the zip file, alter the config.txt's contents to be `http://x.x.x.x:xxxx/payload` (replace with your actual c2 server's ip)
 then on the victim's machine, unzip the folder and run the exe and it will connect to your c2 server.
 
+## ^ THE INSTALLER.BAT WILL DO THIS AUTOMATICALLY ^
+(you just need to change one line on the .bat file to let it know what the c2 server address is)
+
 
 # LOOKING FOR CONTRIBUTERS:
 for bug fixes and features, open a pull request.
