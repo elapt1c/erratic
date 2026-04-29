@@ -22,6 +22,11 @@ if you go to `http://x.x.x.x:xxxx/` you will be able to access the WebUi and log
 
 If possible, try to run the c2 through https to ensure security.
 
+# THE LAUNCHER:
+I created a ready-to-go exe-based launcher for your c2 servers. all you need to do is download the zip file, alter the config.txt's contents to be `http://x.x.x.x:xxxx/payload` (replace with your actual c2 server's ip)
+then on the victim's machine, unzip the folder and run the exe and it will connect to your c2 server.
+
+
 # LOOKING FOR CONTRIBUTERS:
 for bug fixes and features, open a pull request.
 if you have any issue using erratic, open an issue and i will try to get to you when i can.
